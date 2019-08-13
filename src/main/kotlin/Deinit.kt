@@ -27,6 +27,7 @@ object RegisteredHooks {
             val hook = element.getAttribute(hookAttribute)
             val children = element.querySelectorAll(":scope *[$hookAttribute]")
             for (idx in (children.length - 1) downTo 0) {
+                // TODO This should just run the hook directly. Not be recursive.
                 runHooksFor(children[idx]!!)
             }
 
