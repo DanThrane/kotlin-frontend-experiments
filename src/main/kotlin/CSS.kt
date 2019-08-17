@@ -39,10 +39,10 @@ fun css(builder: CSSBuilder.() -> Unit): String {
 }
 
 class CSSBuilder : CSSSelectorContext, CSSPropertyListBuilder() {
-    val rules = HashMap<String, Map<String, String>>()
+    val rules = ArrayList<Pair<String, Map<String, String>>>()
 
     operator fun CSSSelector.invoke(builder: CSSPropertyListBuilder.() -> Unit) {
-        rules[textValue] = CSSPropertyListBuilder().also(builder).properties
+        rules.add(textValue to CSSPropertyListBuilder().also(builder).properties)
     }
 }
 
@@ -74,6 +74,16 @@ var CSSPropertyListBuilder.justifyContent: String by CSSDelegate()
 var CSSPropertyListBuilder.justifyItems: String by CSSDelegate()
 var CSSPropertyListBuilder.boxSizing: String by CSSDelegate()
 var CSSPropertyListBuilder.resize: String by CSSDelegate()
+var CSSPropertyListBuilder.fontSize: String by CSSDelegate()
+var CSSPropertyListBuilder.fontWeight: String by CSSDelegate()
+var CSSPropertyListBuilder.listStyle: String by CSSDelegate()
+var CSSPropertyListBuilder.maxWidth: String by CSSDelegate()
+var CSSPropertyListBuilder.maxHeight: String by CSSDelegate()
+var CSSPropertyListBuilder.minHeight: String by CSSDelegate()
+var CSSPropertyListBuilder.minWidth: String by CSSDelegate()
+var CSSPropertyListBuilder.borderCollapse: String by CSSDelegate()
+var CSSPropertyListBuilder.borderSpacing: String by CSSDelegate()
+var CSSPropertyListBuilder.textAlign: String by CSSDelegate()
 
 class CSSDelegate(val name: String? = null) {
     operator fun getValue(thisRef: Any?, property: KProperty<*>): String {

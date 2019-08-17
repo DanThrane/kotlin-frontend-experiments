@@ -4,7 +4,6 @@
     <facet type="kotlin-language" name="Kotlin">
       <configuration version="3" platform="JavaScript " useProjectSettings="false" isTestModule="false" externalProjectId="web2">
         <newMppModelJpsModuleKind>COMPILATION_AND_SOURCE_SET_HOLDER</newMppModelJpsModuleKind>
-        <productionOutputPath>$MODULE_DIR$/../../build/js/packages/web2/kotlin/web2.js</productionOutputPath>
         <compilerSettings />
         <compilerArguments>
           <option name="outputFile" value="$MODULE_DIR$/../../build/js/packages/web2/kotlin/web2.js" />

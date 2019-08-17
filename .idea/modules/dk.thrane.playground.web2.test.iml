@@ -7,7 +7,6 @@
           <sourceSet>dk.thrane.playground.web2.main</sourceSet>
         </sourceSets>
         <newMppModelJpsModuleKind>COMPILATION_AND_SOURCE_SET_HOLDER</newMppModelJpsModuleKind>
-        <testOutputPath>$MODULE_DIR$/../../build/js/packages/web2-test/kotlin/web2-test.js</testOutputPath>
         <compilerSettings />
         <compilerArguments>
           <option name="outputFile" value="$MODULE_DIR$/../../build/js/packages/web2-test/kotlin/web2-test.js" />

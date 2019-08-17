@@ -21,14 +21,15 @@ object RegisteredHooks {
         }
     }
 
-    fun runHooksFor(node: Node) {
+    fun runHooksFor(node: Node, recurse: Boolean = true) {
         runCatching {
             val element = node as Element
             val hook = element.getAttribute(hookAttribute)
-            val children = element.querySelectorAll(":scope *[$hookAttribute]")
-            for (idx in (children.length - 1) downTo 0) {
-                // TODO This should just run the hook directly. Not be recursive.
-                runHooksFor(children[idx]!!)
+            if (recurse) {
+                val children = element.querySelectorAll(":scope *[$hookAttribute]")
+                for (idx in (children.length - 1) downTo 0) {
+                    runHooksFor(children[idx]!!, recurse = false)
+                }
             }
 
             if (hook != null) {
