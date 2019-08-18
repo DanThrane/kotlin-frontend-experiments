@@ -40,6 +40,8 @@ class ListComponent<T>(
     }
 }
 
-fun <T> Element.list(ref: Reference<ListComponent<T>>, template: Element.(T) -> Unit) {
-    ref.currentOrNull = ListComponent(this, template)
+fun <T> Element.list(ref: Reference<ListComponent<T>> = Reference(), template: Element.(T) -> Unit): ListComponent<T> {
+    val listComponent = ListComponent(this, template)
+    ref.currentOrNull = listComponent
+    return listComponent
 }

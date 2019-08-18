@@ -15,7 +15,6 @@ import flexDirection
 import fontSize
 import h1
 import BoundData
-import boundClass
 import boundClassByPredicate
 import height
 import marginBottom
@@ -39,7 +38,7 @@ import withPseudoElement
 
 private const val ACTIVE_PAGE_CLASS = "active"
 
-private val outerBoxStyle = css {
+private val style = css {
     height = 80.px
     backgroundColor = Theme.primary.base.toString()
     color = Theme.onPrimary.toString()
@@ -76,11 +75,11 @@ private val outerBoxStyle = css {
         backgroundColor = Theme.onPrimary.toString()
         position = "relative"
         top = 12.px
+        transition = "opacity 0.25s ease-in"
     }
 
     (byTag("a").withPseudoClass("hover").withPseudoElement("before")) {
         opacity = "1"
-        transition = "opacity 0.25s ease-in"
     }
 }
 
@@ -95,7 +94,7 @@ object Header {
 }
 
 fun Element.header() {
-    div(A(klass = outerBoxStyle)) {
+    div(A(klass = style)) {
         h1 {
             routeLink(href = "/") {
                 text("Board")

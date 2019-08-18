@@ -50,8 +50,7 @@ fun main() {
                 },
 
                 children = {
-                    Header.activePage.currentValue = Page.COURSES
-                    text("Courses")
+                    courses()
                 }
             )
 

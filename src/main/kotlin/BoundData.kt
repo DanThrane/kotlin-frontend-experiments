@@ -9,9 +9,10 @@ class BoundData<T>(initialValue: T) {
             handlers.forEach { it(value) }
         }
 
-    fun addHandler(handler: (T) -> Unit) {
+    fun addHandler(handler: (T) -> Unit): (T) -> Unit {
         handlers.add(handler)
         handler(currentValue)
+        return handler
     }
 
     fun removeHandler(handler: (T) -> Unit) {
@@ -49,7 +50,7 @@ fun <Data> Element.boundClassByPredicate(
         if (predicate(newData)) {
             node.className = (setOf(*classes) + baseClasses).joinToString(" ")
         } else {
-            node.className = ""
+            node.className = baseClasses.joinToString(" ")
         }
     }
 }
