@@ -6,7 +6,7 @@ data class Reference<T>(var currentOrNull: T? = null) {
     val current: T get() = currentOrNull!!
 }
 
-inline fun <T : Node> Node.baseElement(
+inline fun <T : Element> Element.baseElement(
     tag: String,
     attrs: CommonAttributes<T> = CommonAttributes(),
     children: T.() -> Unit = {}
@@ -17,8 +17,8 @@ inline fun <T : Node> Node.baseElement(
             element.setAttribute(name, value.toString())
         }
 
-        if (classes.isNotEmpty()) {
-            element.setAttribute("class", classes.joinToString(" "))
+        if (classes.isNotEmpty() || klass != null) {
+            element.setAttribute("class", (classes + klass).filterNotNull().joinToString(" "))
         }
 
         @Suppress("UNCHECKED_CAST")
@@ -31,17 +31,17 @@ inline fun <T : Node> Node.baseElement(
     }
 }
 
-fun Node.text(value: String): Text {
+fun Element.text(value: String): Text {
     val node = document.createTextNode(value)
     appendChild(node)
     return node
 }
 
-fun Node.on(eventName: String, eventHandler: (Event) -> Unit) {
+fun Element.on(eventName: String, eventHandler: (Event) -> Unit) {
     addEventListener(eventName, eventHandler)
 }
 
-inline fun Node.a(
+inline fun Element.a(
     attrs: CommonAttributes<HTMLAnchorElement> = CommonAttributes(),
     href: String = "javascript:void(0)",
     children: (HTMLAnchorElement.() -> Unit) = {}
@@ -53,35 +53,73 @@ inline fun Node.a(
     )
 }
 
-inline fun Node.div(
+inline fun Element.div(
     attrs: CommonAttributes<HTMLDivElement> = CommonAttributes(),
     children: (HTMLDivElement.() -> Unit) = {}
 ) {
     baseElement("div", attrs, children)
 }
 
-inline fun Node.ul(
+inline fun Element.h1(
+    attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
+    children: (HTMLHeadingElement.() -> Unit) = {}
+) {
+    baseElement("h1", attrs, children)
+}
+
+inline fun Element.h2(
+    attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
+    children: (HTMLHeadingElement.() -> Unit) = {}
+) {
+    baseElement("h2", attrs, children)
+}
+inline fun Element.h3(
+    attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
+    children: (HTMLHeadingElement.() -> Unit) = {}
+) {
+    baseElement("h3", attrs, children)
+}
+inline fun Element.h4(
+    attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
+    children: (HTMLHeadingElement.() -> Unit) = {}
+) {
+    baseElement("h4", attrs, children)
+}
+inline fun Element.h5(
+    attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
+    children: (HTMLHeadingElement.() -> Unit) = {}
+) {
+    baseElement("h5", attrs, children)
+}
+inline fun Element.h6(
+    attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
+    children: (HTMLHeadingElement.() -> Unit) = {}
+) {
+    baseElement("h6", attrs, children)
+}
+
+inline fun Element.ul(
     attrs: CommonAttributes<HTMLUListElement> = CommonAttributes(),
     children: (HTMLUListElement.() -> Unit) = {}
 ) {
     baseElement("ul", attrs, children)
 }
 
-inline fun Node.li(
+inline fun Element.li(
     attrs: CommonAttributes<HTMLLIElement> = CommonAttributes(),
     children: (HTMLLIElement.() -> Unit) = {}
 ) {
     baseElement("li", attrs, children)
 }
 
-inline fun Node.form(
+inline fun Element.form(
     attrs: CommonAttributes<HTMLFormElement> = CommonAttributes(),
     children: (HTMLFormElement.() -> Unit) = {}
 ) {
     baseElement("form", attrs, children)
 }
 
-inline fun Node.input(
+inline fun Element.input(
     attrs: CommonAttributes<HTMLInputElement> = CommonAttributes(),
     placeholder: String? = null,
     type: String? = null,
@@ -104,7 +142,7 @@ enum class WrapType {
     hard
 }
 
-inline fun Node.textarea(
+inline fun Element.textarea(
     attrs: CommonAttributes<HTMLTextAreaElement> = CommonAttributes(),
     placeholder: String? = null,
     rows: Int? = null,
@@ -144,7 +182,7 @@ inline fun Node.textarea(
     )
 }
 
-inline fun Node.button(
+inline fun Element.button(
     attrs: CommonAttributes<HTMLButtonElement> = CommonAttributes(),
     children: (HTMLButtonElement.() -> Unit) = {}
 ) {
@@ -157,7 +195,8 @@ inline fun Node.button(
 
 typealias A<T> = CommonAttributes<T>
 
-data class CommonAttributes<T : Node>(
+data class CommonAttributes<T : Element>(
+    val klass: String? = null,
     val classes: Set<String> = emptySet(),
     val attributes: Map<String, Any> = emptyMap(),
     val ref: Reference<T>? = null

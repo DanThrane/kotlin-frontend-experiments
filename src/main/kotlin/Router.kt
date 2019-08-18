@@ -1,10 +1,10 @@
+import org.w3c.dom.Element
 import org.w3c.dom.HTMLAnchorElement
 import org.w3c.dom.HTMLDivElement
-import org.w3c.dom.Node
 import org.w3c.dom.events.Event
 import kotlin.browser.window
 
-inline fun Node.routeLink(
+inline fun Element.routeLink(
     attrs: CommonAttributes<HTMLAnchorElement> = CommonAttributes(),
     href: String,
     children: (HTMLAnchorElement.() -> Unit) = {}
@@ -20,15 +20,15 @@ inline fun Node.routeLink(
 }
 
 object Router {
-    data class RouteWithGenerator(val route: Route, val generator: Node.() -> Unit)
+    data class RouteWithGenerator(val route: Route, val generator: Element.() -> Unit)
     private val routes = ArrayList<RouteWithGenerator>()
-    private lateinit var rootNode: Node
-    private lateinit var currentRouteNode: Node
-    private var notFoundRoute: Node.() -> Unit = {
+    private lateinit var rootNode: Element
+    private lateinit var currentRouteNode: Element
+    private var notFoundRoute: Element.() -> Unit = {
         div { text("Not found") }
     }
 
-    fun mount(node: Node): Unit = with(node) {
+    fun mount(node: Element): Unit = with(node) {
         initializePopStateListener()
         rootNode = node
         mountRouteNode()
@@ -74,11 +74,11 @@ object Router {
         mountRouteNode().generator()
     }
 
-    fun route(route: RouteBuilder.() -> Unit, children: Node.() -> Unit) {
+    fun route(route: RouteBuilder.() -> Unit, children: Element.() -> Unit) {
         routes.add(RouteWithGenerator(RouteBuilder().also(route).build(), children))
     }
 
-    private fun Node.initializePopStateListener() {
+    private fun Element.initializePopStateListener() {
         val onPopState: (Event) -> Unit = { event: Event ->
             refresh()
         }
@@ -91,7 +91,7 @@ object Router {
     }
 }
 
-fun Node.router(block: Router.() -> Unit) {
+fun Element.router(block: Router.() -> Unit) {
     Router.mount(this)
     Router.block()
     Router.refresh()

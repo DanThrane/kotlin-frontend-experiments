@@ -1,5 +1,5 @@
+import org.w3c.dom.Element
 import org.w3c.dom.HTMLDivElement
-import org.w3c.dom.Node
 
 val flexCss = css { display = "flex" }
 
@@ -34,7 +34,7 @@ object JustifyContent {
     val unsafeCenter = css { justifyContent = "unsafe center" }
 }
 
-inline fun Node.flex(
+inline fun Element.flex(
     attrs: CommonAttributes<HTMLDivElement> = CommonAttributes(),
     children: HTMLDivElement.() -> Unit
 ) {

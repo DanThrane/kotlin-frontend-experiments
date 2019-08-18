@@ -1,10 +1,10 @@
-import org.w3c.dom.Node
+import org.w3c.dom.Element
 import org.w3c.dom.get
 import kotlin.dom.clear
 
 class ListComponent<T>(
-    private val node: Node,
-    private val template: Node.(T) -> Unit
+    private val node: Element,
+    private val template: Element.(T) -> Unit
 ) {
     private val backingData = ArrayList<T>()
 
@@ -26,7 +26,7 @@ class ListComponent<T>(
         }
 
         backingData.removeAt(idx)
-        node.removeChild(node.childNodes[idx]!!)
+        deleteNode(node.childNodes[idx] as Element)
     }
 
     fun clear() {
@@ -40,6 +40,6 @@ class ListComponent<T>(
     }
 }
 
-fun <T> Node.list(ref: Reference<ListComponent<T>>, template: Node.(T) -> Unit) {
+fun <T> Element.list(ref: Reference<ListComponent<T>>, template: Element.(T) -> Unit) {
     ref.currentOrNull = ListComponent(this, template)
 }

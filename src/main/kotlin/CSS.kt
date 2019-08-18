@@ -56,10 +56,24 @@ open class CSSPropertyListBuilder {
 
 class WriteOnlyProperty() : RuntimeException("Write only property")
 
+var CSSPropertyListBuilder.textDecoration: String by CSSDelegate()
 var CSSPropertyListBuilder.color: String by CSSDelegate()
+var CSSPropertyListBuilder.transition: String by CSSDelegate()
+var CSSPropertyListBuilder.position: String by CSSDelegate()
+var CSSPropertyListBuilder.top: String by CSSDelegate()
+var CSSPropertyListBuilder.bottom: String by CSSDelegate()
+var CSSPropertyListBuilder.left: String by CSSDelegate()
+var CSSPropertyListBuilder.right: String by CSSDelegate()
 var CSSPropertyListBuilder.backgroundColor: String by CSSDelegate()
+var CSSPropertyListBuilder.content: String by CSSDelegate()
+var CSSPropertyListBuilder.opacity: String by CSSDelegate()
+var CSSPropertyListBuilder.outline: String by CSSDelegate()
 var CSSPropertyListBuilder.display: String by CSSDelegate()
 var CSSPropertyListBuilder.padding: String by CSSDelegate()
+var CSSPropertyListBuilder.paddingTop: String by CSSDelegate()
+var CSSPropertyListBuilder.paddingBottom: String by CSSDelegate()
+var CSSPropertyListBuilder.paddingLeft: String by CSSDelegate()
+var CSSPropertyListBuilder.paddingRight: String by CSSDelegate()
 var CSSPropertyListBuilder.border: String by CSSDelegate()
 var CSSPropertyListBuilder.borderRadius: String by CSSDelegate()
 var CSSPropertyListBuilder.width: String by CSSDelegate()
@@ -72,10 +86,12 @@ var CSSPropertyListBuilder.marginBottom: String by CSSDelegate()
 var CSSPropertyListBuilder.alignItems: String by CSSDelegate()
 var CSSPropertyListBuilder.justifyContent: String by CSSDelegate()
 var CSSPropertyListBuilder.justifyItems: String by CSSDelegate()
+var CSSPropertyListBuilder.flexDirection: String by CSSDelegate()
 var CSSPropertyListBuilder.boxSizing: String by CSSDelegate()
 var CSSPropertyListBuilder.resize: String by CSSDelegate()
 var CSSPropertyListBuilder.fontSize: String by CSSDelegate()
 var CSSPropertyListBuilder.fontWeight: String by CSSDelegate()
+var CSSPropertyListBuilder.fontFamily: String by CSSDelegate()
 var CSSPropertyListBuilder.listStyle: String by CSSDelegate()
 var CSSPropertyListBuilder.maxWidth: String by CSSDelegate()
 var CSSPropertyListBuilder.maxHeight: String by CSSDelegate()
@@ -179,6 +195,7 @@ infix fun CSSSelector.descendant(other: CSSSelector) = CSSSelector("$textValue $
 infix fun CSSSelector.or(other: CSSSelector) = CSSSelector("$textValue, ${other.textValue}")
 infix fun CSSSelector.and(other: CSSSelector) = CSSSelector("$textValue${other.textValue}")
 
+val Int.pt get() = "${this}pt"
 val Int.px get() = "${this}px"
 val Int.vh get() = "${this}vh"
 val Int.em get() = "${this}px"

@@ -16,5 +16,3 @@ object Theme {
     val onSurface = RGB.create(0xFFFFFF)
     val onError = RGB.create(0xFFFFFF)
 }
-
-

@@ -1,6 +1,6 @@
 import org.w3c.dom.*
 
-fun Node.onDeinit(deinit: DeinitHook) {
+fun Element.onDeinit(deinit: DeinitHook) {
     RegisteredHooks.attachHooks(deinit, this)
 }
 
@@ -12,23 +12,21 @@ object RegisteredHooks {
 
     private val attachedHooks = HashMap<Int, DeinitHook>()
 
-    fun attachHooks(hook: DeinitHook, node: Node) {
+    fun attachHooks(hook: DeinitHook, node: Element) {
         runCatching {
             val id = counter++
-            val element = (node as Element)
             attachedHooks[id] = hook
-            element.setAttribute(hookAttribute, id.toString())
+            node.setAttribute(hookAttribute, id.toString())
         }
     }
 
-    fun runHooksFor(node: Node, recurse: Boolean = true) {
+    fun runHooksFor(element: Element, recurse: Boolean = true) {
         runCatching {
-            val element = node as Element
             val hook = element.getAttribute(hookAttribute)
             if (recurse) {
                 val children = element.querySelectorAll(":scope *[$hookAttribute]")
                 for (idx in (children.length - 1) downTo 0) {
-                    runHooksFor(children[idx]!!, recurse = false)
+                    runHooksFor(children[idx] as Element, recurse = false)
                 }
             }
 
@@ -39,7 +37,7 @@ object RegisteredHooks {
     }
 }
 
-fun deleteNode(node: Node) {
+fun deleteNode(node: Element) {
     RegisteredHooks.runHooksFor(node)
     node.parentElement?.removeChild(node)
 }
