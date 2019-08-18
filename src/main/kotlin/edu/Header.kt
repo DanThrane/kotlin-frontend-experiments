@@ -43,7 +43,6 @@ private val style = css {
     backgroundColor = Theme.primary.base.toString()
     color = Theme.onPrimary.toString()
     paddingLeft = 16.px
-    marginBottom = 16.px
     display = "flex"
     alignItems = "center"
     flexDirection = "row"

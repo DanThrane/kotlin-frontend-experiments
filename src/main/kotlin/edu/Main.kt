@@ -1,28 +1,51 @@
 package edu
 
+import A
 import div
 import reset
-import routeLink
 import router
-import Route
+import backgroundColor
+import color
 import css
+import display
+import flexBasis
+import flexDirection
+import flexGrow
+import flexShrink
 import fontFamily
-import fontWeight
+import height
 import margin
 import matchAny
 import padding
+import percent
 import px
 import rawCSS
 import text
+import vh
 import kotlin.browser.document
 
-val globalTheme = css {
+private val globalTheme = css {
     margin = 0.px
     padding = 0.px
 
     (matchAny()) {
         fontFamily = "'Roboto', sans-serif"
     }
+}
+
+private val rootContainer = css {
+    display = "flex"
+    flexDirection = "column"
+    height = 100.vh
+}
+
+private val contentContainer = css {
+    backgroundColor = Theme.background.toString()
+    color = Theme.onBackground.toString()
+    flexGrow = "10"
+    flexShrink = "1"
+    flexBasis = "auto"
+    height = 100.percent
 }
 
 fun main() {
@@ -32,38 +55,40 @@ fun main() {
     body.classList.add(reset)
     body.classList.add(globalTheme)
 
-    body.div {
+    body.div(A(klass = rootContainer)) {
         header()
 
-        router {
-            route(
-                route = {},
-                children = {
-                    Header.activePage.currentValue = Page.HOME
-                    text("Root")
-                }
-            )
+        div(A(klass = contentContainer)) {
+            router {
+                route(
+                    route = {},
+                    children = {
+                        Header.activePage.currentValue = Page.HOME
+                        text("Root")
+                    }
+                )
 
-            route(
-                route = {
-                    +"courses"
-                },
+                route(
+                    route = {
+                        +"courses"
+                    },
 
-                children = {
-                    courses()
-                }
-            )
+                    children = {
+                        courses()
+                    }
+                )
 
-            route(
-                route = {
-                    +"calendar"
-                },
+                route(
+                    route = {
+                        +"calendar"
+                    },
 
-                children = {
-                    Header.activePage.currentValue = Page.CALENDAR
-                    text("Calendar")
-                }
-            )
+                    children = {
+                        Header.activePage.currentValue = Page.CALENDAR
+                        text("Calendar")
+                    }
+                )
+            }
         }
     }
 }

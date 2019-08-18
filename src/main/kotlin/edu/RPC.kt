@@ -11,7 +11,7 @@ data class RPC<Request, Response>(val namespace: String, val name: String)
 
 fun <Request, Response> RPC<Request, Response>.call(request: Request): Promise<Response> {
     return Promise { resolve, reject ->
-        // Just returning some fake data after 100ms
+        // Just returning some fake data after some time
         window.setTimeout({
             @Suppress("UNCHECKED_CAST")
             when (this) {

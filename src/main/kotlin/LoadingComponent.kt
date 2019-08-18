@@ -1,4 +1,5 @@
 import org.w3c.dom.Element
+import kotlin.browser.window
 import kotlin.js.Promise
 
 class LoadingState {
@@ -15,7 +16,7 @@ fun Element.loading(state: LoadingState = LoadingState(), children: Element.() -
 
         CardInStack(
             predicate = { state.loading.currentValue },
-            card = { text("We are currently loading!") }
+            card = { loadingIcon() }
         ),
 
         CardInStack(
@@ -60,4 +61,22 @@ fun <T : Any> Element.remoteDataWithLoading(children: Element.(data: T) -> Unit)
     }
 
     return component
+}
+
+private val loadingIconStyle = css {
+    (byTag("h2")) {
+        fontSize = 30.pt
+    }
+}
+
+fun Element.loadingIcon() {
+    h2(A(klass = loadingIconStyle)) {
+        val numberOfDots = BoundData(0)
+        val interval = window.setInterval({
+            numberOfDots.currentValue = (numberOfDots.currentValue + 1) % 5
+        }, 250)
+        onDeinit { window.clearInterval(interval) }
+
+        boundText(numberOfDots) { String(CharArray(it + 1) { '.' }) }
+    }
 }

@@ -34,7 +34,6 @@ val reset = css {
 
     (1..6).forEach { headingLevel ->
         (byTag("h$headingLevel")) {
-            fontSize = 100.percent
             fontWeight = "normal"
         }
     }

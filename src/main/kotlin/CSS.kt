@@ -87,6 +87,10 @@ var CSSPropertyListBuilder.alignItems: String by CSSDelegate()
 var CSSPropertyListBuilder.justifyContent: String by CSSDelegate()
 var CSSPropertyListBuilder.justifyItems: String by CSSDelegate()
 var CSSPropertyListBuilder.flexDirection: String by CSSDelegate()
+var CSSPropertyListBuilder.flexFlow: String by CSSDelegate()
+var CSSPropertyListBuilder.flexGrow: String by CSSDelegate()
+var CSSPropertyListBuilder.flexShrink: String by CSSDelegate()
+var CSSPropertyListBuilder.flexBasis: String by CSSDelegate()
 var CSSPropertyListBuilder.boxSizing: String by CSSDelegate()
 var CSSPropertyListBuilder.resize: String by CSSDelegate()
 var CSSPropertyListBuilder.fontSize: String by CSSDelegate()
@@ -100,6 +104,7 @@ var CSSPropertyListBuilder.minWidth: String by CSSDelegate()
 var CSSPropertyListBuilder.borderCollapse: String by CSSDelegate()
 var CSSPropertyListBuilder.borderSpacing: String by CSSDelegate()
 var CSSPropertyListBuilder.textAlign: String by CSSDelegate()
+var CSSPropertyListBuilder.boxShadow: String by CSSDelegate()
 
 class CSSDelegate(val name: String? = null) {
     operator fun getValue(thisRef: Any?, property: KProperty<*>): String {
@@ -216,4 +221,21 @@ fun CSSPropertyListBuilder.setVariable(v: CSSVar, value: String) {
 
 fun CSSPropertyListBuilder.setVariable(v: CSSVar, value: RGB) {
     setVariable(v, value.toString())
+}
+
+fun boxShadow(
+    offsetX: Int,
+    offsetY: Int,
+    blurRadius: Int = 0,
+    spreadRadius: Int = 0,
+    color: String? = null
+): String {
+    return buildString {
+        append("${offsetX}px ${offsetY}px ")
+        append("${blurRadius}px ${spreadRadius}px")
+        if (color != null) {
+            append(" ")
+            append(color)
+        }
+    }
 }
