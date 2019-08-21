@@ -1,0 +1,32 @@
+{
+  "version": "8",
+  "byHash": {
+    "0c685e6b082454cb4e24711450f6f317": {
+      "src": "/home/dthrane/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-js/1.3.41/55b92e441b0ea9cbf079c6452b41687f95571524/kotlin-stdlib-js-1.3.41.jar",
+      "target": "kotlin:1.3.41"
+    },
+    "0fa9947f074781da105625dc711b8671": {
+      "src": "/home/dthrane/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-common/1.3.41/2ecf4aa059427d7186312fd1736afedf7972e7f7/kotlin-stdlib-common-1.3.41.jar"
+    },
+    "cc909a7119541d29c4e3377a05cb035e": {
+      "src": "/home/dthrane/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-test-js/1.3.41/3e2fbf8ac392c8ec6da16cd1436378fdfd97230f/kotlin-test-js-1.3.41.jar",
+      "target": "kotlin-test:1.3.41"
+    },
+    "6841cc8fc165b71d223833706e951af7": {
+      "src": "/home/dthrane/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-test-common/1.3.41/744000c1a0ef654706ce3367a10543590dab9246/kotlin-test-common-1.3.41.jar"
+    },
+    "fee8054f66b8f8499787c4bdb38dbf45": {
+      "src": "/home/dthrane/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-test-annotations-common/1.3.41/f57e03dea3d1a81b5e1b3cdcf4eb2710a3fac173/kotlin-test-annotations-common-1.3.41.jar"
+    }
+  },
+  "byTarget": {
+    "kotlin:1.3.41": {
+      "src": "/home/dthrane/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-js/1.3.41/55b92e441b0ea9cbf079c6452b41687f95571524/kotlin-stdlib-js-1.3.41.jar",
+      "target": "kotlin:1.3.41"
+    },
+    "kotlin-test:1.3.41": {
+      "src": "/home/dthrane/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-test-js/1.3.41/3e2fbf8ac392c8ec6da16cd1436378fdfd97230f/kotlin-test-js-1.3.41.jar",
+      "target": "kotlin-test:1.3.41"
+    }
+  }
+}
