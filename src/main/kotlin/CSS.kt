@@ -32,7 +32,12 @@ fun css(builder: CSSBuilder.() -> Unit): String {
     val cssBuilder = CSSBuilder().also(builder)
     globalCSS(".$className", cssBuilder.properties)
     cssBuilder.rules.forEach { (selector, props) ->
-        globalCSS(".$className $selector", props)
+        if (selector.startsWith(SELF_SELECTOR)) {
+            val resolvedSelector = selector.replace(SELF_SELECTOR, className)
+            globalCSS(".$resolvedSelector", props)
+        } else {
+            globalCSS(".$className $selector", props)
+        }
     }
 
     return className
@@ -141,6 +146,8 @@ fun CSSSelectorContext.byClass(className: String) = CSSSelector(".$className")
 fun CSSSelectorContext.byId(idName: String) = CSSSelector("#$idName")
 fun CSSSelectorContext.byNamespace(namespace: String) = CSSSelector("$namespace:|*")
 fun CSSSelectorContext.matchAny() = CSSSelector("*")
+private const val SELF_SELECTOR = "##SELF##"
+fun CSSSelectorContext.matchSelf(): CSSSelector = CSSSelector(SELF_SELECTOR)
 fun CSSSelectorContext.withNoNamespace() = CSSSelector("|*")
 fun CSSSelectorContext.attributePresent(
     tagName: String,

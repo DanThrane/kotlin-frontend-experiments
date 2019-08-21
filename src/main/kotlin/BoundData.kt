@@ -34,8 +34,9 @@ fun <Data> Element.boundClass(
     classes: (Data) -> Set<String>
 ) {
     val node = this
+    val existingClasses = node.className
     data.addHandler { newData ->
-        node.className = (classes(newData) + baseClasses).joinToString(" ")
+        node.className = (classes(newData) + baseClasses).joinToString(" ") + " " + existingClasses
     }
 }
 

@@ -21,8 +21,10 @@ import percent
 import px
 import rawCSS
 import text
+import toasts
 import vh
 import kotlin.browser.document
+import Toast
 
 private val globalTheme = css {
     margin = 0.px
@@ -56,6 +58,7 @@ fun main() {
     body.classList.add(globalTheme)
 
     body.div(A(klass = rootContainer)) {
+        toasts()
         header()
 
         div(A(klass = contentContainer)) {
@@ -86,6 +89,9 @@ fun main() {
                     children = {
                         Header.activePage.currentValue = Page.CALENDAR
                         text("Calendar")
+                        repeat(10) {
+                            Toasts.push(Toast(ToastType.INFO, "This is a test $it", 1000L))
+                        }
                     }
                 )
             }
