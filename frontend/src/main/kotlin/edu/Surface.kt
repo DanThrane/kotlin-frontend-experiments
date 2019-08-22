@@ -2,20 +2,9 @@ package edu
 
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLDivElement
-import CommonAttributes
-import css
-import CSSVar
-import div
 import kotlin.math.max
 import kotlin.math.min
-import A
-import backgroundColor
-import borderRadius
-import boxShadow
-import color
-import margin
-import padding
-import px
+import dk.thrane.playground.*
 
 private val elevations = (1..10).map { elevation ->
     css {

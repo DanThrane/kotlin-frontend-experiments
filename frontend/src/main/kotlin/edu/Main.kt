@@ -1,30 +1,9 @@
 package edu
 
-import A
-import div
-import reset
-import router
-import backgroundColor
-import color
-import css
-import display
-import flexBasis
-import flexDirection
-import flexGrow
-import flexShrink
-import fontFamily
-import height
-import margin
-import matchAny
-import padding
-import percent
-import px
-import rawCSS
-import text
-import toasts
-import vh
 import kotlin.browser.document
-import Toast
+import dk.thrane.playground.*
+import org.khronos.webgl.Int8Array
+import org.khronos.webgl.Uint8Array
 
 private val globalTheme = css {
     margin = 0.px
@@ -56,6 +35,27 @@ fun main() {
     val body = document.body!!
     body.classList.add(reset)
     body.classList.add(globalTheme)
+
+    console.log(byteArrayOf(1, 2, 3, 4))
+    console.log("Hello, World".encodeToUTF8())
+    console.log(stringFromUtf8("Hello, World".encodeToUTF8()))
+
+    val out = BoundOutgoingMessage(TestMessage)
+
+    out[TestMessage.text] = "Testing!"
+    out[TestMessage.nested] = {
+        it[TestMessage.text] = "qweasdqwe"
+        it[TestMessage.nested] = null
+    }
+
+    val buffer = Uint8Array(1024 * 1024)
+    write(ByteOutStreamJS(buffer), out.build())
+
+    val message = parse(ByteStreamJS(Int8Array(buffer.buffer).unsafeCast<ByteArray>()))
+    console.log(message)
+    val boundMessage = BoundMessage<TestMessage>(message as ObjectField)
+    console.log(boundMessage[TestMessage.text])
+    console.log(boundMessage[TestMessage.nested]?.get(TestMessage.text))
 
     body.div(A(klass = rootContainer)) {
         toasts()

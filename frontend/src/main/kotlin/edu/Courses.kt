@@ -1,17 +1,7 @@
 package edu
 
-import A
-import div
-import list
 import org.w3c.dom.Element
-import remoteDataWithLoading
-import text
-import ListComponent
-import css
-import height
-import margin
-import px
-import width
+import dk.thrane.playground.*
 
 data class Course(val name: String)
 

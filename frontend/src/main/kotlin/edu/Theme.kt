@@ -1,7 +1,6 @@
 package edu
 
-import ColorShades
-import RGB
+import dk.thrane.playground.*
 
 object Theme {
     val primary = ColorShades(RGB.create(0x673AB7))

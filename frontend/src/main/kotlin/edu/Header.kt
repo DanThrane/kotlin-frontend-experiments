@@ -1,40 +1,7 @@
 package edu
 
-import A
-import alignItems
-import and
-import backgroundColor
-import byClass
-import byTag
-import color
-import content
-import css
-import display
-import div
-import flexDirection
-import fontSize
-import h1
-import BoundData
-import boundClassByPredicate
-import height
-import marginBottom
-import marginRight
-import opacity
 import org.w3c.dom.Element
-import outline
-import paddingLeft
-import percent
-import position
-import pt
-import px
-import routeLink
-import text
-import textDecoration
-import top
-import transition
-import width
-import withPseudoClass
-import withPseudoElement
+import dk.thrane.playground.*
 
 private const val ACTIVE_PAGE_CLASS = "active"
 
