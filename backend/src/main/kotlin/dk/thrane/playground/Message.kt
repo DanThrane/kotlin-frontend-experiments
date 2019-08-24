@@ -213,66 +213,6 @@ abstract class ByteOutStream {
     }
 }
 
-fun parse(buffer: ByteStream): Field {
-    return when (FieldType.valueOf(buffer.read()) ?: throw IllegalStateException()) {
-        FieldType.BYTE -> ByteField(buffer.read().toByte())
-        FieldType.INT -> IntField(buffer.readInt())
-        FieldType.LONG -> LongField(buffer.readLong())
-        FieldType.DOUBLE -> DoubleField(buffer.readDouble())
-        FieldType.BOOLEAN -> BooleanField(buffer.read() != 0)
-        FieldType.OBJ_END -> ObjectEndIndicator
-        FieldType.NULL -> NullField
-
-        FieldType.STRING -> {
-            val length = buffer.readInt()
-            val destinationBuffer = ByteArray(length)
-            buffer.readFully(destinationBuffer)
-            StringField(stringFromUtf8(destinationBuffer))
-        }
-
-        FieldType.OBJ_START -> {
-            val fields = ArrayList<Field>()
-            while (true) {
-                val element = parse(buffer)
-                if (element == ObjectEndIndicator) break
-                fields.add(element)
-            }
-
-            ObjectField(fields)
-        }
-    }
-}
-
-fun write(out: ByteOutStream, field: Field) {
-    out.writeByte(field.type.ordinal)
-    when (field) {
-        is ByteField -> out.writeByte(field.value)
-        is IntField -> out.writeByte(field.value)
-        is LongField -> out.writeLong(field.value)
-        is DoubleField -> out.writeDouble(field.value)
-        is BooleanField -> out.writeByte(if (field.value) 1 else 0)
-        ObjectEndIndicator -> {
-        }
-        NullField -> {
-        }
-
-        is StringField -> {
-            val payload = field.value.encodeToUTF8()
-            out.writeInt(payload.size)
-            out.writeFully(payload)
-        }
-
-        is ObjectField -> {
-            field.fields.forEach { child ->
-                write(out, child)
-            }
-
-            write(out, ObjectEndIndicator)
-        }
-    }
-
-    out.flush()
-}
 
 interface SchemaField<Owner> {
     val idx: Int
@@ -415,3 +355,65 @@ class BoundOutgoingMessage<T : MessageSchema<T>>(schema: MessageSchema<T>) {
         return ObjectField(fields.map { it ?: NullField })
     }
 }
+
+fun parseMessage(buffer: ByteStream): Field {
+    return when (FieldType.valueOf(buffer.read()) ?: throw IllegalStateException()) {
+        FieldType.BYTE -> ByteField(buffer.read().toByte())
+        FieldType.INT -> IntField(buffer.readInt())
+        FieldType.LONG -> LongField(buffer.readLong())
+        FieldType.DOUBLE -> DoubleField(buffer.readDouble())
+        FieldType.BOOLEAN -> BooleanField(buffer.read() != 0)
+        FieldType.OBJ_END -> ObjectEndIndicator
+        FieldType.NULL -> NullField
+
+        FieldType.STRING -> {
+            val length = buffer.readInt()
+            val destinationBuffer = ByteArray(length)
+            buffer.readFully(destinationBuffer)
+            StringField(stringFromUtf8(destinationBuffer))
+        }
+
+        FieldType.OBJ_START -> {
+            val fields = ArrayList<Field>()
+            while (true) {
+                val element = parseMessage(buffer)
+                if (element == ObjectEndIndicator) break
+                fields.add(element)
+            }
+
+            ObjectField(fields)
+        }
+    }
+}
+
+fun writeMessage(out: ByteOutStream, field: Field) {
+    out.writeByte(field.type.ordinal)
+    when (field) {
+        is ByteField -> out.writeByte(field.value)
+        is IntField -> out.writeByte(field.value)
+        is LongField -> out.writeLong(field.value)
+        is DoubleField -> out.writeDouble(field.value)
+        is BooleanField -> out.writeByte(if (field.value) 1 else 0)
+        ObjectEndIndicator -> {
+        }
+        NullField -> {
+        }
+
+        is StringField -> {
+            val payload = field.value.encodeToUTF8()
+            out.writeInt(payload.size)
+            out.writeFully(payload)
+        }
+
+        is ObjectField -> {
+            field.fields.forEach { child ->
+                writeMessage(out, child)
+            }
+
+            writeMessage(out, ObjectEndIndicator)
+        }
+    }
+
+    out.flush()
+}
+

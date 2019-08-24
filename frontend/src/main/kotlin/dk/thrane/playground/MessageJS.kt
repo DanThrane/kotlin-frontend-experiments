@@ -30,6 +30,8 @@ class ByteStreamJS(buffer: ByteArray) : ByteStream(buffer) {
 class ByteOutStreamJS(private val buffer: Uint8Array) : ByteOutStream() {
     private var ptr = 0
 
+    fun viewMessage(): ArrayBufferView = buffer.subarray(0, ptr)
+
     override fun flush() {
         // Do nothing
     }

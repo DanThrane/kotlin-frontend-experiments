@@ -20,6 +20,8 @@ val mimeTypes = mapOf(
     ".gz" to "application/gzip",
     ".gif" to "image/gif",
     ".htmn" to "text/html",
+    ".html" to "text/html",
+    ".htm" to "text/html",
     ".ico" to "image/vnd.microsoft.icon",
     ".ics" to "text/calendar",
     ".jar" to "application/java-archive",

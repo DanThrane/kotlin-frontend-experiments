@@ -1,7 +1,6 @@
 package dk.thrane.playground
 
 import java.io.BufferedOutputStream
-import java.io.ByteArrayOutputStream
 
 class ByteStreamJVM(buffer: ByteArray) : ByteStream(buffer) {
     override fun readDouble(): Double {
@@ -33,19 +32,3 @@ class ByteOutStreamJVM(private val stream: BufferedOutputStream) : ByteOutStream
 
 fun String.encodeToUTF8() = toByteArray(Charsets.UTF_8)
 fun stringFromUtf8(array: ByteArray) = String(array, Charsets.UTF_8)
-
-fun main() {
-    val out = BoundOutgoingMessage(TestMessage)
-
-    out[TestMessage.text] = "Testing!"
-    out[TestMessage.nested] = {
-        it[TestMessage.text] = "qweasdqwe"
-        it[TestMessage.nested] = null
-    }
-
-    val byteArrayOutputStream = ByteArrayOutputStream()
-    write(ByteOutStreamJVM(byteArrayOutputStream.buffered()), out.build())
-
-    val message = parse(ByteStreamJVM(byteArrayOutputStream.toByteArray()))
-    println(message)
-}

@@ -89,7 +89,96 @@ fun main() {
 
                         outsBuffered.sendResponse(101, defaultHeaders() + responseHeaders)
 
-                        while (true) {
+                        // TODO We definitely need fix the GC issues here.
+                        val fragmentationBuffer = ByteArray(1024 * 256)
+                        var fragmentationPtr = -1
+                        var fragmentationOpcode: WebSocketOpCode? = null
+
+                        var messagesReceived = 0
+                        var start = -1L
+
+                        fun handleFrame(fin: Boolean, opcode: WebSocketOpCode?, payload: ByteArray): Boolean {
+                            if (!fin || opcode == WebSocketOpCode.CONTINUATION) {
+                                if (opcode !== WebSocketOpCode.CONTINUATION) {
+                                    fragmentationPtr = 0
+                                    fragmentationOpcode = opcode
+                                }
+
+                                if (fragmentationPtr + payload.size >= fragmentationBuffer.size) {
+                                    println("Dropping connection. Packet size exceeds limit.")
+                                    return true
+                                }
+
+                                System.arraycopy(payload, 0, fragmentationBuffer, fragmentationPtr, payload.size)
+                                fragmentationPtr += payload.size
+
+                                if (!fin) return false
+
+                                val copiedPayload = fragmentationBuffer.copyOf(fragmentationPtr)
+                                val copiedOpcode = fragmentationOpcode
+
+                                fragmentationPtr = -1
+                                fragmentationOpcode = null
+
+                                return handleFrame(true, copiedOpcode, copiedPayload)
+                            }
+
+                            when (opcode) {
+                                WebSocketOpCode.TEXT -> {
+                                    val toString = payload.toString(Charsets.UTF_8)
+                                    println("Payload is: $toString")
+
+                                    outsBuffered.sendWebsocketFrame(
+                                        WebSocketOpCode.TEXT,
+                                        "Echo: $toString".toByteArray()
+                                    )
+                                }
+
+                                WebSocketOpCode.BINARY -> {
+                                    if (messagesReceived == 0) {
+                                        start = System.currentTimeMillis()
+                                    }
+                                    messagesReceived++
+                                    val message = try {
+                                        parseMessage(ByteStreamJVM(payload))
+                                    } catch (ex: Throwable) {
+                                        println("Caught an exception parsing message")
+                                        ex.printStackTrace()
+
+                                        outsBuffered.sendWebsocketFrame(WebSocketOpCode.CONNECTION_CLOSE, ByteArray(0))
+                                        return true
+                                    }
+
+                                    val bound = BoundMessage<TestMessage>(message as ObjectField)
+                                    check(bound[TestMessage.text] == "Hello!")
+
+                                    val bos = ByteArrayOutputStream()
+                                    writeMessage(ByteOutStreamJVM(bos.buffered()), message)
+                                    outsBuffered.sendWebsocketFrame(WebSocketOpCode.BINARY, bos.toByteArray())
+
+                                    if (messagesReceived == 1000) {
+                                        val time = System.currentTimeMillis() - start
+                                        messagesReceived = 0
+                                        println("It took $time ms to receive 1000 messages")
+                                    }
+                                }
+
+                                WebSocketOpCode.PING -> {
+                                    outsBuffered.sendWebsocketFrame(
+                                        WebSocketOpCode.PONG,
+                                        payload
+                                    )
+                                }
+
+                                else -> {
+                                    println("Type: $opcode")
+                                    println("Raw payload: ${payload.toList()}")
+                                }
+                            }
+                            return false
+                        }
+
+                        messageLoop@ while (true) {
                             val initialByte = insBuffered.read()
                             if (initialByte == -1) break
 
@@ -135,13 +224,6 @@ fun main() {
                                 null
                             }
 
-                            println("Received a frame!")
-                            println("fin = $fin")
-                            println("opcode = $opcode")
-                            println("mask = $mask")
-                            println("payloadLength = $payloadLength")
-                            println("maskingKey = $maskingKey")
-
                             if (payloadLength > Int.MAX_VALUE) TODO()
 
                             val payload = ByteArray(payloadLength.toInt())
@@ -152,48 +234,41 @@ fun main() {
                                 }
                             }
 
-                            when (opcode) {
-                                WebSocketOpCode.TEXT -> {
-                                    val toString = payload.toString(Charsets.UTF_8)
-                                    println("Payload is: $toString")
-
-                                    outsBuffered.sendWebsocketFrame(
-                                        WebSocketOpCode.TEXT,
-                                        "Echo: $toString".toByteArray()
-                                    )
-                                }
-
-                                else -> {
-                                    println("Raw payload: ${payload.toList()}")
-                                }
-                            }
+                            if (handleFrame(fin, opcode, payload)) break@messageLoop
                         }
                     } else {
                         println("$method $path")
 
-                        if (path.startsWith("/assets/")) {
-                            val file = File(rootDir, path.removePrefix("/assets/"))
+                        fun sendFile(file: File) {
+                            outsBuffered.sendResponse(
+                                200,
+                                defaultHeaders(payloadSize = file.length()) +
+                                        listOf(
+                                            Header(
+                                                "Content-Type",
+                                                mimeTypes["." + file.extension] ?: "text/plain"
+                                            )
+                                        )
+                            )
+                            file.inputStream().copyTo(outsBuffered)
+                            outsBuffered.flush()
+                        }
+
+                        if (path == "/favicon.ico") {
+                            outsBuffered.sendResponse(404, defaultHeaders())
+                        } else if (path.startsWith("/assets/")) {
+                            val file = File(rootDir, path)
                                 .normalize()
                                 .takeIf { it.absolutePath.startsWith(rootDirPath) && it.exists() && it.isFile }
+                            println(File(rootDir, path.removePrefix("/assets/")).absolutePath)
 
                             if (file == null) {
                                 outsBuffered.sendResponse(404, defaultHeaders())
                             } else {
-                                outsBuffered.sendResponse(
-                                    200,
-                                    defaultHeaders(payloadSize = file.length()) +
-                                            listOf(
-                                                Header(
-                                                    "Content-Type",
-                                                    mimeTypes["." + file.extension] ?: "text/plain"
-                                                )
-                                            )
-                                )
-                                file.inputStream().copyTo(outsBuffered)
-                                outsBuffered.flush()
+                                sendFile(file)
                             }
                         } else {
-                            outsBuffered.sendResponse(404, defaultHeaders())
+                            sendFile(File(rootDir, "index.html"))
                         }
                     }
                 }

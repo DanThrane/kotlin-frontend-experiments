@@ -186,11 +186,12 @@ inline fun Element.textarea(
 
 inline fun Element.button(
     attrs: CommonAttributes<HTMLButtonElement> = CommonAttributes(),
+    type: String? = "button",
     children: (HTMLButtonElement.() -> Unit) = {}
 ) {
     baseElement(
         "button",
-        attrs,
+        attrs.mergeWith(mapOf("type" to type)),
         children
     )
 }
