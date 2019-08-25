@@ -7,7 +7,7 @@ enum class FieldType {
     INT,
     LONG,
     DOUBLE,
-    STRING,
+    BINARY,
     BOOLEAN,
     OBJ_START,
     OBJ_END,
@@ -29,7 +29,7 @@ class ByteField(val value: Byte) : Field(FieldType.BYTE)
 class IntField(val value: Int) : Field(FieldType.INT)
 class LongField(val value: Long) : Field(FieldType.LONG)
 class DoubleField(val value: Double) : Field(FieldType.DOUBLE)
-class StringField(val value: String) : Field(FieldType.STRING)
+class BinaryField(val value: ByteArray) : Field(FieldType.BINARY)
 class BooleanField(val value: Boolean) : Field(FieldType.BOOLEAN)
 object ObjectEndIndicator : Field(FieldType.OBJ_END)
 object NullField : Field(FieldType.NULL)
@@ -95,19 +95,19 @@ class ObjectField(val fields: List<Field>) : Field(FieldType.OBJ_START) {
         return (field as DoubleField).value
     }
 
-    fun getString(idx: Int): String {
+    fun getBinary(idx: Int): ByteArray {
         if (idx !in fields.indices) throw BadMessageException()
         val field = fields[idx]
-        if (field.type != FieldType.STRING) throw BadMessageException()
-        return (field as StringField).value
+        if (field.type != FieldType.BINARY) throw BadMessageException()
+        return (field as BinaryField).value
     }
 
-    fun getStringNullable(idx: Int): String? {
+    fun getBinaryNullable(idx: Int): ByteArray? {
         if (idx !in fields.indices) throw BadMessageException()
         val field = fields[idx]
         if (field.type == FieldType.NULL) return null
-        if (field.type != FieldType.STRING) throw BadMessageException()
-        return (field as StringField).value
+        if (field.type != FieldType.BINARY) throw BadMessageException()
+        return (field as BinaryField).value
     }
 
     fun getBoolean(idx: Int): Boolean {
@@ -230,9 +230,30 @@ class LongSchemaField<Owner>(override val idx: Int) : SchemaField<Owner>
 class LongSchemaFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
 class BooleanSchemaField<Owner>(override val idx: Int) : SchemaField<Owner>
 class BooleanSchemaFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+class BinarySchemaField<Owner>(override val idx: Int) : SchemaField<Owner>
+class BinarySchemaFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
 
 class ObjectSchemaField<Owner, T : MessageSchema<T>>(override val idx: Int, val schema: T) : SchemaField<Owner>
 class ObjectSchemaFieldNullable<Owner, T : MessageSchema<T>>(override val idx: Int, val schema: T) : SchemaField<Owner>
+
+class ListBinaryField<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListStringField<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListIntField<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListDoubleField<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListByteField<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListLongField<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListBooleanField<Owner>(override val idx: Int) : SchemaField<Owner>
+
+class ListStringFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListBinaryFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListIntFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListDoubleFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListByteFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListLongFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+class ListBooleanFieldNullable<Owner>(override val idx: Int) : SchemaField<Owner>
+
+class ListObjectField<Owner, T : MessageSchema<T>>(override val idx: Int, val schema: T) : SchemaField<Owner>
+class ListObjectFieldNullable<Owner, T : MessageSchema<T>>(override val idx: Int, val schema: T) : SchemaField<Owner>
 
 abstract class MessageSchema<Self> {
     var maxIndex: Int = -1
@@ -240,6 +261,9 @@ abstract class MessageSchema<Self> {
 
     fun string(idx: Int) = StringSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
     fun stringNullable(idx: Int) = StringSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+
+    fun binary(idx: Int) = BinarySchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    fun binaryNullable(idx: Int) = BinarySchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
     fun byte(idx: Int) = ByteSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
     fun byteNullable(idx: Int) = ByteSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
@@ -256,25 +280,166 @@ abstract class MessageSchema<Self> {
     fun boolean(idx: Int) = BooleanSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
     fun booleanNullable(idx: Int) = BooleanSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
+    fun listByte(idx: Int) = ListByteField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    fun ListByteNullable(idx: Int) = ListByteFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+
+    fun listInt(idx: Int) = ListIntField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    fun ListIntNullable(idx: Int) = ListIntFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+
+    fun listLong(idx: Int) = ListLongField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    fun ListLongNullable(idx: Int) = ListLongFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+
+    fun listDouble(idx: Int) = ListDoubleField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    fun ListDoubleNullable(idx: Int) = ListDoubleFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+
+    fun listString(idx: Int) = ListStringField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    fun ListStringNullable(idx: Int) = ListStringFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+
+    fun listBoolean(idx: Int) = ListBooleanField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    fun ListBooleanNullable(idx: Int) = ListBooleanFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+
     fun <Obj : MessageSchema<Obj>> obj(idx: Int, schema: Obj) =
         ObjectSchemaField<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
 
     fun <Obj : MessageSchema<Obj>> objNullable(idx: Int, schema: Obj) =
         ObjectSchemaFieldNullable<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
+
+
+    fun <Obj : MessageSchema<Obj>> listObj(idx: Int, schema: Obj) =
+        ListObjectField<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
+
+    fun <Obj : MessageSchema<Obj>> listObjNullable(idx: Int, schema: Obj) =
+        ListObjectFieldNullable<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
 }
 
 object TestMessage : MessageSchema<TestMessage>() {
     val text = string(0)
     val nested = objNullable(1, TestMessage)
+    val messages = listInt(2)
 }
 
 class BoundMessage<T : MessageSchema<T>>(val root: ObjectField) {
     operator fun get(field: StringSchemaField<T>): String {
-        return root.getString(field.idx)
+        return stringFromUtf8(root.getBinary(field.idx))
+    }
+
+    operator fun get(field: BinarySchemaField<T>): ByteArray {
+        return root.getBinary(field.idx)
+    }
+
+    operator fun get(field: ByteSchemaField<T>): Byte {
+        return root.getByte(field.idx)
+    }
+
+    operator fun get(field: IntSchemaField<T>): Int {
+        return root.getInt(field.idx)
+    }
+
+    operator fun get(field: LongSchemaField<T>): Long {
+        return root.getLong(field.idx)
+    }
+
+    operator fun get(field: DoubleSchemaField<T>): Double {
+        return root.getDouble(field.idx)
+    }
+
+    operator fun get(field: BooleanSchemaField<T>): Boolean {
+        return root.getBoolean(field.idx)
     }
 
     operator fun get(field: StringSchemaFieldNullable<T>): String? {
-        return root.getStringNullable(field.idx)
+        return root.getBinaryNullable(field.idx)?.let { stringFromUtf8(it) }
+    }
+
+    operator fun get(field: BinarySchemaFieldNullable<T>): ByteArray? {
+        return root.getBinaryNullable(field.idx)
+    }
+
+    operator fun get(field: ByteSchemaFieldNullable<T>): Byte? {
+        return root.getByteNullable(field.idx)
+    }
+
+    operator fun get(field: IntSchemaFieldNullable<T>): Int? {
+        return root.getIntNullable(field.idx)
+    }
+
+    operator fun get(field: LongSchemaFieldNullable<T>): Long? {
+        return root.getLongNullable(field.idx)
+    }
+
+    operator fun get(field: DoubleSchemaFieldNullable<T>): Double? {
+        return root.getDoubleNullable(field.idx)
+    }
+
+    operator fun get(field: BooleanSchemaFieldNullable<T>): Boolean? {
+        return root.getBooleanNullable(field.idx)
+    }
+
+    operator fun get(field: ListIntField<T>): List<Int> {
+        return root.getObject(field.idx).fields.map { (it as IntField).value }
+    }
+
+    operator fun get(field: ListByteField<T>): List<Byte> {
+        return root.getObject(field.idx).fields.map { (it as ByteField).value }
+    }
+
+    operator fun get(field: ListLongField<T>): List<Long> {
+        return root.getObject(field.idx).fields.map { (it as LongField).value }
+    }
+
+    operator fun get(field: ListDoubleField<T>): List<Double> {
+        return root.getObject(field.idx).fields.map { (it as DoubleField).value }
+    }
+
+    operator fun get(field: ListStringField<T>): List<String> {
+        return root.getObject(field.idx).fields.map { stringFromUtf8((it as BinaryField).value) }
+    }
+
+    operator fun get(field: ListBinaryField<T>): List<ByteArray> {
+        return root.getObject(field.idx).fields.map { (it as BinaryField).value }
+    }
+
+    operator fun get(field: ListBooleanField<T>): List<Boolean> {
+        return root.getObject(field.idx).fields.map { (it as BooleanField).value }
+    }
+
+    operator fun <R : MessageSchema<R>> get(field: ListObjectField<T, R>): List<BoundMessage<R>> {
+        return root.getObject(field.idx).fields.map { BoundMessage<R>(it as ObjectField) }
+    }
+
+    operator fun get(field: ListIntFieldNullable<T>): List<Int?> {
+        return root.getObject(field.idx).fields.map { (it as? IntField)?.value }
+    }
+
+    operator fun get(field: ListByteFieldNullable<T>): List<Byte?> {
+        return root.getObject(field.idx).fields.map { (it as? ByteField)?.value }
+    }
+
+    operator fun get(field: ListLongFieldNullable<T>): List<Long?> {
+        return root.getObject(field.idx).fields.map { (it as? LongField)?.value }
+    }
+
+    operator fun get(field: ListDoubleFieldNullable<T>): List<Double?> {
+        return root.getObject(field.idx).fields.map { (it as? DoubleField)?.value }
+    }
+
+    operator fun get(field: ListStringFieldNullable<T>): List<String?> {
+        return root.getObject(field.idx).fields.map { (it as? BinaryField)?.value?.let { stringFromUtf8(it) } }
+    }
+
+    operator fun get(field: ListBinaryFieldNullable<T>): List<ByteArray?> {
+        return root.getObject(field.idx).fields.map { (it as? BinaryField)?.value }
+    }
+
+    operator fun get(field: ListBooleanFieldNullable<T>): List<Boolean?> {
+        return root.getObject(field.idx).fields.map { (it as? BooleanField)?.value }
+    }
+
+    operator fun <R : MessageSchema<R>> get(field: ListObjectFieldNullable<T, R>): List<BoundMessage<R>?> {
+        return root.getObject(field.idx).fields.map {
+            if (it == NullField) null
+            else BoundMessage<R>(it as ObjectField)
+        }
     }
 
     operator fun <R : MessageSchema<R>> get(field: ObjectSchemaField<T, R>): BoundMessage<R> {
@@ -290,11 +455,19 @@ class BoundOutgoingMessage<T : MessageSchema<T>>(schema: MessageSchema<T>) {
     private val fields = arrayOfNulls<Field>(schema.maxIndex + 1)
 
     operator fun set(field: StringSchemaField<T>, value: String) {
-        fields[field.idx] = StringField(value)
+        fields[field.idx] = BinaryField(value.encodeToUTF8())
     }
 
     operator fun set(field: StringSchemaFieldNullable<T>, value: String?) {
-        fields[field.idx] = if (value != null) StringField(value) else NullField
+        fields[field.idx] = if (value != null) BinaryField(value.encodeToUTF8()) else NullField
+    }
+
+    operator fun set(field: BinarySchemaField<T>, value: ByteArray) {
+        fields[field.idx] = BinaryField(value)
+    }
+
+    operator fun set(field: BinarySchemaFieldNullable<T>, value: ByteArray?) {
+        fields[field.idx] = if (value != null) BinaryField(value) else NullField
     }
 
     operator fun set(field: IntSchemaField<T>, value: Int) {
@@ -337,6 +510,74 @@ class BoundOutgoingMessage<T : MessageSchema<T>>(schema: MessageSchema<T>) {
         fields[field.idx] = if (value != null) BooleanField(value) else NullField
     }
 
+    operator fun set(field: ListByteField<T>, value: List<Byte>) {
+        fields[field.idx] = ObjectField(value.map { ByteField(it) })
+    }
+
+    operator fun set(field: ListIntField<T>, value: List<Int>) {
+        fields[field.idx] = ObjectField(value.map { IntField(it) })
+    }
+
+    operator fun set(field: ListLongField<T>, value: List<Long>) {
+        fields[field.idx] = ObjectField(value.map { LongField(it) })
+    }
+
+    operator fun set(field: ListDoubleField<T>, value: List<Double>) {
+        fields[field.idx] = ObjectField(value.map { DoubleField(it) })
+    }
+
+    operator fun set(field: ListStringField<T>, value: List<String>) {
+        fields[field.idx] = ObjectField(value.map { BinaryField(it.encodeToUTF8()) })
+    }
+
+    operator fun set(field: ListBinaryField<T>, value: List<ByteArray>) {
+        fields[field.idx] = ObjectField(value.map { BinaryField(it) })
+    }
+
+    operator fun set(field: ListBooleanField<T>, value: List<Boolean>) {
+        fields[field.idx] = ObjectField(value.map { BooleanField(it) })
+    }
+
+    operator fun <R : MessageSchema<R>> set(field: ListObjectField<T, R>, value: List<BoundOutgoingMessage<R>>) {
+        fields[field.idx] = ObjectField(value.map { it.build() })
+    }
+
+    operator fun set(field: ListByteFieldNullable<T>, value: List<Byte?>) {
+        fields[field.idx] = ObjectField(value.map { if (it == null) NullField else ByteField(it) })
+    }
+
+    operator fun set(field: ListIntFieldNullable<T>, value: List<Int?>) {
+        fields[field.idx] = ObjectField(value.map { if (it == null) NullField else IntField(it) })
+    }
+
+    operator fun set(field: ListLongFieldNullable<T>, value: List<Long?>) {
+        fields[field.idx] = ObjectField(value.map { if (it == null) NullField else LongField(it) })
+    }
+
+    operator fun set(field: ListDoubleFieldNullable<T>, value: List<Double?>) {
+        fields[field.idx] = ObjectField(value.map { if (it == null) NullField else DoubleField(it) })
+    }
+
+    operator fun set(field: ListStringFieldNullable<T>, value: List<String?>) {
+        fields[field.idx] = ObjectField(value.map { if (it == null) NullField else BinaryField(it.encodeToUTF8()) })
+    }
+
+    operator fun set(field: ListBinaryFieldNullable<T>, value: List<ByteArray?>) {
+        fields[field.idx] = ObjectField(value.map { if (it == null) NullField else BinaryField(it) })
+    }
+
+    operator fun set(field: ListBooleanFieldNullable<T>, value: List<Boolean?>) {
+        fields[field.idx] = ObjectField(value.map { if (it == null) NullField else BooleanField(it) })
+    }
+
+    operator fun <R : MessageSchema<R>> set(
+        field: ListObjectFieldNullable<T, R>,
+        value: List<BoundOutgoingMessage<R>?>
+    ) {
+        fields[field.idx] = ObjectField(value.map { it?.build() ?: NullField })
+    }
+
+
     operator fun <R : MessageSchema<R>> set(
         field: ObjectSchemaField<T, R>,
         builder: (BoundOutgoingMessage<R>) -> Unit
@@ -366,11 +607,11 @@ fun parseMessage(buffer: ByteStream): Field {
         FieldType.OBJ_END -> ObjectEndIndicator
         FieldType.NULL -> NullField
 
-        FieldType.STRING -> {
+        FieldType.BINARY -> {
             val length = buffer.readInt()
             val destinationBuffer = ByteArray(length)
             buffer.readFully(destinationBuffer)
-            StringField(stringFromUtf8(destinationBuffer))
+            BinaryField(destinationBuffer)
         }
 
         FieldType.OBJ_START -> {
@@ -390,7 +631,7 @@ fun writeMessage(out: ByteOutStream, field: Field) {
     out.writeByte(field.type.ordinal)
     when (field) {
         is ByteField -> out.writeByte(field.value)
-        is IntField -> out.writeByte(field.value)
+        is IntField -> out.writeInt(field.value)
         is LongField -> out.writeLong(field.value)
         is DoubleField -> out.writeDouble(field.value)
         is BooleanField -> out.writeByte(if (field.value) 1 else 0)
@@ -399,8 +640,8 @@ fun writeMessage(out: ByteOutStream, field: Field) {
         NullField -> {
         }
 
-        is StringField -> {
-            val payload = field.value.encodeToUTF8()
+        is BinaryField -> {
+            val payload = field.value
             out.writeInt(payload.size)
             out.writeFully(payload)
         }

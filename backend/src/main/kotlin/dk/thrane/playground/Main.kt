@@ -100,6 +100,9 @@ fun main() {
                         fun handleFrame(fin: Boolean, opcode: WebSocketOpCode?, payload: ByteArray): Boolean {
                             if (!fin || opcode == WebSocketOpCode.CONTINUATION) {
                                 if (opcode !== WebSocketOpCode.CONTINUATION) {
+                                    // First frame has !fin and opcode != CONTINUATION
+                                    // Remaining frames will have opcode CONTINUATION
+                                    // Last frame will have fin and opcode CONTINUATION
                                     fragmentationPtr = 0
                                     fragmentationOpcode = opcode
                                 }
@@ -260,7 +263,6 @@ fun main() {
                             val file = File(rootDir, path)
                                 .normalize()
                                 .takeIf { it.absolutePath.startsWith(rootDirPath) && it.exists() && it.isFile }
-                            println(File(rootDir, path.removePrefix("/assets/")).absolutePath)
 
                             if (file == null) {
                                 outsBuffered.sendResponse(404, defaultHeaders())

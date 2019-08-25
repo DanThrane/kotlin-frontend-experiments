@@ -51,7 +51,7 @@ fun Element.courses() {
         }
 
         button {
-            text("Do websockets!")
+            text("Do websockets2!")
 
             on("click") {
                 val conn = webSocketConn
@@ -62,6 +62,7 @@ fun Element.courses() {
                         nested[TestMessage.text] = "Nested"
                         nested[TestMessage.nested] = null
                     }
+                    message[TestMessage.messages] = listOf(1, 2, 3, 4, 5, 6)
                     writeMessage(streamOut, message.build())
                     conn.send(streamOut.viewMessage())
                 } else {
@@ -76,6 +77,9 @@ fun Element.courses() {
                         val stream = ByteStreamJS(Int8Array(data).unsafeCast<ByteArray>())
                         val parseMessage = parseMessage(stream)
                         console.log(parseMessage)
+                        val bound = BoundMessage<TestMessage>(parseMessage as ObjectField)
+                        console.log(bound[TestMessage.text])
+                        Unit
                     }
                 }
             }
