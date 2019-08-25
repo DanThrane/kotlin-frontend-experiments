@@ -8,22 +8,47 @@ import java.time.*
 import java.util.*
 import kotlin.collections.ArrayList
 
-fun main() {
-    val server = ServerSocket(8080)
-    val rootDir = File(".")
-    val rootDirPath = rootDir.normalize().absolutePath + "/"
+class HttpClient(
+    val ins: BufferedInputStream,
+    val outs: BufferedOutputStream
+) {
+    var closing: Boolean = false
+}
+
+enum class HttpMethod {
+    GET
+}
+
+interface HttpRequestHandler {
+    fun HttpClient.handleRequest(method: HttpMethod, path: String)
+}
+
+interface WebSocketRequestHandler {
+    fun HttpClient.handleBinaryFrame(frame: ByteArray) {}
+    fun HttpClient.handleTextFrame(frame: String) {}
+    fun HttpClient.handleNewConnection() {}
+    fun HttpClient.handleClosedConnection() {}
+}
+
+fun startServer(
+    socket: ServerSocket = ServerSocket(8080),
+    httpRequestHandler: HttpRequestHandler? = null,
+    webSocketRequestHandler: WebSocketRequestHandler? = null
+) {
     val sha1 = MessageDigest.getInstance("SHA-1")
     val websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
     while (true) {
-        val client = server.accept()
+        val rawClient = socket.accept()
         Thread {
-            client.use { client ->
+            rawClient.use { rawClient ->
                 while (true) {
-                    val insBuffered = client.inputStream.buffered()
-                    val outsBuffered = client.outputStream.buffered()
+                    val ins = rawClient.inputStream.buffered()
+                    val outs = rawClient.outputStream.buffered()
 
-                    val requestLine = insBuffered.readLine() ?: break
+                    val client = HttpClient(ins, outs)
+
+                    val requestLine = ins.readLine() ?: break
                     val tokens = requestLine.split(" ")
                     if (tokens.size < 3 || !requestLine.endsWith("HTTP/1.1")) {
                         break
@@ -31,7 +56,7 @@ fun main() {
 
                     val method = tokens.first().toUpperCase()
                     if (method != "GET") {
-                        outsBuffered.sendResponse(405, defaultHeaders())
+                        client.sendHttpResponse(405, defaultHeaders())
                         break
                     }
 
@@ -39,7 +64,7 @@ fun main() {
 
                     val requestHeaders = ArrayList<Header>()
                     while (true) {
-                        val headerLine = insBuffered.readLine() ?: break
+                        val headerLine = ins.readLine() ?: break
                         if (headerLine.isEmpty()) break
                         requestHeaders.add(
                             Header(
@@ -49,7 +74,9 @@ fun main() {
                         )
                     }
 
-                    if (requestHeaders.any { it.header.equals("Upgrade", true) && it.value == "websocket" }) {
+                    if (webSocketRequestHandler != null &&
+                        requestHeaders.any { it.header.equals("Upgrade", true) && it.value == "websocket" }
+                    ) {
                         println("Websocket connection at $path")
                         // The following headers are required to be present
                         val key = requestHeaders.find { it.header.equals("Sec-WebSocket-Key", true) }
@@ -57,13 +84,13 @@ fun main() {
                         val version = requestHeaders.find { it.header.equals("Sec-WebSocket-Version", true) }
 
                         if (key == null || origin == null || version == null) {
-                            outsBuffered.sendResponse(400, defaultHeaders())
+                            client.sendHttpResponse(400, defaultHeaders())
                             break
                         }
 
                         // We only speak WebSocket as defined in RFC 6455
                         if (!version.value.split(",").map { it.trim() }.contains("13")) {
-                            outsBuffered.sendResponse(
+                            client.sendHttpResponse(
                                 400, defaultHeaders() + listOf(
                                     Header("Sec-WebSocket-Version", "13")
                                 )
@@ -87,15 +114,12 @@ fun main() {
                         responseHeaders.add(Header("Connection", "Upgrade"))
                         responseHeaders.add(Header("Upgrade", "websocket"))
 
-                        outsBuffered.sendResponse(101, defaultHeaders() + responseHeaders)
+                        client.sendHttpResponse(101, defaultHeaders() + responseHeaders)
 
                         // TODO We definitely need fix the GC issues here.
                         val fragmentationBuffer = ByteArray(1024 * 256)
                         var fragmentationPtr = -1
                         var fragmentationOpcode: WebSocketOpCode? = null
-
-                        var messagesReceived = 0
-                        var start = -1L
 
                         fun handleFrame(fin: Boolean, opcode: WebSocketOpCode?, payload: ByteArray): Boolean {
                             if (!fin || opcode == WebSocketOpCode.CONTINUATION) {
@@ -128,46 +152,23 @@ fun main() {
 
                             when (opcode) {
                                 WebSocketOpCode.TEXT -> {
-                                    val toString = payload.toString(Charsets.UTF_8)
-                                    println("Payload is: $toString")
-
-                                    outsBuffered.sendWebsocketFrame(
-                                        WebSocketOpCode.TEXT,
-                                        "Echo: $toString".toByteArray()
-                                    )
+                                    with(client) {
+                                        with(webSocketRequestHandler) {
+                                            handleTextFrame(payload.toString(Charsets.UTF_8))
+                                        }
+                                    }
                                 }
 
                                 WebSocketOpCode.BINARY -> {
-                                    if (messagesReceived == 0) {
-                                        start = System.currentTimeMillis()
-                                    }
-                                    messagesReceived++
-                                    val message = try {
-                                        parseMessage(ByteStreamJVM(payload))
-                                    } catch (ex: Throwable) {
-                                        println("Caught an exception parsing message")
-                                        ex.printStackTrace()
-
-                                        outsBuffered.sendWebsocketFrame(WebSocketOpCode.CONNECTION_CLOSE, ByteArray(0))
-                                        return true
-                                    }
-
-                                    val bound = BoundMessage<TestMessage>(message as ObjectField)
-                                    check(bound[TestMessage.text] == "Hello!")
-
-                                    val bos = ByteArrayOutputStream()
-                                    writeMessage(ByteOutStreamJVM(bos.buffered()), message)
-                                    outsBuffered.sendWebsocketFrame(WebSocketOpCode.BINARY, bos.toByteArray())
-
-                                    if (messagesReceived == 1000) {
-                                        val time = System.currentTimeMillis() - start
-                                        messagesReceived = 0
-                                        println("It took $time ms to receive 1000 messages")
+                                    with(client) {
+                                        with(webSocketRequestHandler) {
+                                            handleBinaryFrame(payload)
+                                        }
                                     }
                                 }
 
                                 WebSocketOpCode.PING -> {
-                                    outsBuffered.sendWebsocketFrame(
+                                    client.sendWebsocketFrame(
                                         WebSocketOpCode.PONG,
                                         payload
                                     )
@@ -181,29 +182,29 @@ fun main() {
                             return false
                         }
 
-                        messageLoop@ while (true) {
-                            val initialByte = insBuffered.read()
+                        messageLoop@ while (!client.closing) {
+                            val initialByte = ins.read()
                             if (initialByte == -1) break
 
                             val fin = (initialByte and (0x01 shl 7)) != 0
                             // We don't care about rsv1,2,3
                             val opcode = WebSocketOpCode.values().find { it.opcode == (initialByte and 0x0F) }
 
-                            val maskAndPayload = insBuffered.readByteOrThrow()
+                            val maskAndPayload = ins.readByteOrThrow()
                             val mask = (maskAndPayload and (0x01 shl 7)) != 0
                             val payloadLength: Long = run {
                                 val payloadB1 = (maskAndPayload and 0b01111111)
                                 when {
                                     payloadB1 < 126 -> return@run payloadB1.toLong()
                                     payloadB1 == 126 -> {
-                                        val b1 = insBuffered.readByteOrThrow()
-                                        val b2 = insBuffered.readByteOrThrow()
+                                        val b1 = ins.readByteOrThrow()
+                                        val b2 = ins.readByteOrThrow()
 
                                         ((b1 shl 8) or (b2)).toLong()
                                     }
                                     payloadB1 == 127 -> {
                                         val buffer = ByteArray(8)
-                                        repeat(8) { buffer[it] = insBuffered.readByteOrThrow().toByte() }
+                                        repeat(8) { buffer[it] = ins.readByteOrThrow().toByte() }
 
                                         buffer[0].toLong() shl (64 - 8) or
                                                 (buffer[1].toLong() shl (64 - 8 * 2)) or
@@ -221,7 +222,7 @@ fun main() {
 
                             val maskingKey = if (mask) {
                                 val buffer = ByteArray(4)
-                                repeat(4) { buffer[it] = insBuffered.readByteOrThrow().toByte() }
+                                repeat(4) { buffer[it] = ins.readByteOrThrow().toByte() }
                                 buffer
                             } else {
                                 null
@@ -230,7 +231,7 @@ fun main() {
                             if (payloadLength > Int.MAX_VALUE) TODO()
 
                             val payload = ByteArray(payloadLength.toInt())
-                            insBuffered.readFully(payload)
+                            ins.readFully(payload)
                             if (maskingKey != null) {
                                 payload.forEachIndexed { index, byte ->
                                     payload[index] = (byte.toInt() xor maskingKey[index % 4].toInt()).toByte()
@@ -242,35 +243,14 @@ fun main() {
                     } else {
                         println("$method $path")
 
-                        fun sendFile(file: File) {
-                            outsBuffered.sendResponse(
-                                200,
-                                defaultHeaders(payloadSize = file.length()) +
-                                        listOf(
-                                            Header(
-                                                "Content-Type",
-                                                mimeTypes["." + file.extension] ?: "text/plain"
-                                            )
-                                        )
-                            )
-                            file.inputStream().copyTo(outsBuffered)
-                            outsBuffered.flush()
-                        }
-
-                        if (path == "/favicon.ico") {
-                            outsBuffered.sendResponse(404, defaultHeaders())
-                        } else if (path.startsWith("/assets/")) {
-                            val file = File(rootDir, path)
-                                .normalize()
-                                .takeIf { it.absolutePath.startsWith(rootDirPath) && it.exists() && it.isFile }
-
-                            if (file == null) {
-                                outsBuffered.sendResponse(404, defaultHeaders())
-                            } else {
-                                sendFile(file)
+                        if (httpRequestHandler != null) {
+                            with(client) {
+                                with(httpRequestHandler) {
+                                    handleRequest(HttpMethod.GET, path)
+                                }
                             }
                         } else {
-                            sendFile(File(rootDir, "index.html"))
+                            client.sendHttpResponse(404, defaultHeaders())
                         }
                     }
                 }
@@ -294,7 +274,7 @@ fun defaultHeaders(payloadSize: Long = 0): List<Header> = listOf(
     Header("Content-Length", payloadSize.toString())
 )
 
-fun dateHeader(timestamp: Long = System.currentTimeMillis()): Header {
+private fun dateHeader(timestamp: Long = System.currentTimeMillis()): Header {
     val localDateTime = LocalDateTime.ofInstant(
         Instant.ofEpochMilli(timestamp),
         ZoneId.of("GMT")
@@ -352,16 +332,7 @@ fun dateHeader(timestamp: Long = System.currentTimeMillis()): Header {
 
 data class Header(val header: String, val value: String)
 
-fun BufferedOutputStream.sendResponse(statusCode: Int, headers: List<Header>) {
-    write("HTTP/1.1 $statusCode S$statusCode\r\n".toByteArray())
-    headers.forEach { (header, value) ->
-        write("$header: $value\r\n".toByteArray())
-    }
-    write("\r\n".toByteArray())
-    flush()
-}
-
-fun BufferedInputStream.readLine(): String? {
+private fun BufferedInputStream.readLine(): String? {
     val buffer = ByteArray(4096)
     var idx = 0
     while (idx < buffer.size) {
@@ -385,7 +356,7 @@ fun BufferedInputStream.readLine(): String? {
     return String(buffer, 0, idx, Charsets.UTF_8)
 }
 
-fun BufferedInputStream.readFully(buffer: ByteArray) {
+private fun BufferedInputStream.readFully(buffer: ByteArray) {
     var idx = 0
     while (idx < buffer.size) {
         val read = read(buffer)
@@ -394,7 +365,7 @@ fun BufferedInputStream.readFully(buffer: ByteArray) {
     }
 }
 
-inline fun BufferedInputStream.readByteOrThrow(): Int {
+private inline fun BufferedInputStream.readByteOrThrow(): Int {
     val result = read()
     if (result == -1) throw IOException("Unexpected EOF")
     return result
@@ -402,12 +373,11 @@ inline fun BufferedInputStream.readByteOrThrow(): Int {
 
 val secureRandom = SecureRandom()
 
-fun BufferedOutputStream.sendWebsocketFrame(
+fun HttpClient.sendWebsocketFrame(
     opcode: WebSocketOpCode,
     payload: ByteArray,
     mask: Boolean = false
 ) {
-    val outs = this
     val maskingKey = if (!mask) {
         null
     } else {
@@ -449,3 +419,28 @@ fun BufferedOutputStream.sendWebsocketFrame(
     outs.write(payload)
     outs.flush()
 }
+
+fun HttpClient.sendHttpResponseWithFile(file: File) {
+    sendHttpResponse(
+        200,
+        defaultHeaders(payloadSize = file.length()) +
+                listOf(
+                    Header(
+                        "Content-Type",
+                        mimeTypes["." + file.extension] ?: "text/plain"
+                    )
+                )
+    )
+    file.inputStream().copyTo(outs)
+    outs.flush()
+}
+
+fun HttpClient.sendHttpResponse(statusCode: Int, headers: List<Header>) {
+    outs.write("HTTP/1.1 $statusCode S$statusCode\r\n".toByteArray())
+    headers.forEach { (header, value) ->
+        outs.write("$header: $value\r\n".toByteArray())
+    }
+    outs.write("\r\n".toByteArray())
+    outs.flush()
+}
+
