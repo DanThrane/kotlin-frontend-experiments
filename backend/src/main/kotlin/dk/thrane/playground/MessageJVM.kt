@@ -1,16 +1,21 @@
 package dk.thrane.playground
 
-import java.io.BufferedOutputStream
-
 class ByteStreamJVM(buffer: ByteArray) : ByteStream(buffer) {
     override fun readDouble(): Double {
         return java.lang.Double.longBitsToDouble(readLong())
     }
 }
 
-class ByteOutStreamJVM(private val stream: BufferedOutputStream) : ByteOutStream() {
+class ByteOutStreamJVM(private val stream: ByteArray) : ByteOutStream() {
+    var ptr: Int = 0
+        private set
+
+    fun reset() {
+        ptr = 0
+    }
+
     override fun flush() {
-        stream.flush()
+        // Do nothing
     }
 
     override fun writeDouble(value: Double) {
@@ -18,15 +23,16 @@ class ByteOutStreamJVM(private val stream: BufferedOutputStream) : ByteOutStream
     }
 
     override fun writeByte(value: Int) {
-        stream.write(value)
+        stream[ptr++] = value.toByte()
     }
 
     override fun writeByte(value: Byte) {
-        stream.write(value.toInt())
+        stream[ptr++] = value
     }
 
     override fun writeFully(bytes: ByteArray) {
-        stream.write(bytes)
+        System.arraycopy(bytes, 0, stream, ptr, bytes.size)
+        ptr += bytes.size
     }
 }
 

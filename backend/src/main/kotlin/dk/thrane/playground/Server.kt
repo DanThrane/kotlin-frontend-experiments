@@ -184,7 +184,10 @@ fun startServer(
 
                         messageLoop@ while (!client.closing) {
                             val initialByte = ins.read()
-                            if (initialByte == -1) break
+                            if (initialByte == -1) {
+                                println("No more bytes!")
+                                break
+                            }
 
                             val fin = (initialByte and (0x01 shl 7)) != 0
                             // We don't care about rsv1,2,3
@@ -238,8 +241,12 @@ fun startServer(
                                 }
                             }
 
-                            if (handleFrame(fin, opcode, payload)) break@messageLoop
+                            if (handleFrame(fin, opcode, payload)) {
+                                println("just done")
+                                break@messageLoop
+                            }
                         }
+                        println("Done! ${client.closing}")
                     } else {
                         println("$method $path")
 
@@ -376,6 +383,8 @@ val secureRandom = SecureRandom()
 fun HttpClient.sendWebsocketFrame(
     opcode: WebSocketOpCode,
     payload: ByteArray,
+    offset: Int = 0,
+    length: Int = payload.size,
     mask: Boolean = false
 ) {
     val maskingKey = if (!mask) {
@@ -389,7 +398,7 @@ fun HttpClient.sendWebsocketFrame(
     outs.write((0b1000 shl 4) or opcode.opcode)
     val maskBit = if (mask) 0b1 else 0b0
 
-    val size = payload.size
+    val size = length - offset
     val initialPayloadByte = when {
         size < 126 -> size
         size < 65536 -> 126
@@ -411,12 +420,12 @@ fun HttpClient.sendWebsocketFrame(
     }
 
     if (maskingKey != null) {
-        payload.forEachIndexed { index, byte ->
-            payload[index] = (maskingKey[index % 4].toInt() xor byte.toInt()).toByte()
+        for (index in offset until (offset + length)) {
+            payload[index] = (maskingKey[index % 4].toInt() xor payload[index].toInt()).toByte()
         }
     }
 
-    outs.write(payload)
+    outs.write(payload, offset, length)
     outs.flush()
 }
 

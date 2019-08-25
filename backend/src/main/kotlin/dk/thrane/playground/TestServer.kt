@@ -26,6 +26,7 @@ class TestServer : HttpRequestHandler, WebSocketRequestHandler {
     }
 
     override fun HttpClient.handleBinaryFrame(frame: ByteArray) {
+        println("new frame!")
         val message = try {
             parseMessage(ByteStreamJVM(frame))
         } catch (ex: Throwable) {
@@ -37,12 +38,16 @@ class TestServer : HttpRequestHandler, WebSocketRequestHandler {
             return
         }
 
-        val bound = BoundMessage<TestMessage>(message as ObjectField)
-        check(bound[TestMessage.text] == "Hello!")
+        defaultBufferPool.useInstance { buffer ->
+            val bound = BoundMessage<TestMessage>(message as ObjectField)
+            check(bound[TestMessage.text] == "Hello!")
 
-        val bos = ByteArrayOutputStream()
-        writeMessage(ByteOutStreamJVM(bos.buffered()), message)
-        sendWebsocketFrame(WebSocketOpCode.BINARY, bos.toByteArray())
+            val out = ByteOutStreamJVM(buffer)
+            writeMessage(out, message)
+            println(buffer)
+            println(out.ptr)
+            sendWebsocketFrame(WebSocketOpCode.BINARY, buffer, 0, out.ptr)
+        }
     }
 }
 
