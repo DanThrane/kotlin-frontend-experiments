@@ -13,10 +13,6 @@ import kotlin.browser.document
 
 data class Course(val name: String)
 
-object CoursesBackend : RPCNamespace("courses") {
-    val list = rpc<Unit, List<Course>>("list")
-}
-
 private val container = css {
     width = 900.px
     margin = "0 auto"
@@ -29,7 +25,7 @@ private val coursesSurface = css {
 
 fun Element.courses() {
     Header.activePage.currentValue = Page.COURSES
-    var webSocketConn: WebSocket? = null
+    var webSocketConn: WSConnection? = null
     val streamOut = ByteOutStreamJS(Uint8Array(1024 * 64))
 
     div(A(klass = container)) {
@@ -46,8 +42,6 @@ fun Element.courses() {
             val remoteDataComponent = remoteDataWithLoading<List<Course>> { data ->
                 listComponent.setList(data)
             }
-
-            remoteDataComponent.fetchData { CoursesBackend.list.call(Unit) }
         }
 
         button {
@@ -56,31 +50,23 @@ fun Element.courses() {
             on("click") {
                 val conn = webSocketConn
                 if (conn != null) {
+                    val connectionWithAuth = ConnectionWithAuthorization(conn)
                     val message = BoundOutgoingMessage(TestMessage)
                     message[TestMessage.text] = "Hello!"
                     message[TestMessage.nested] = { nested ->
                         nested[TestMessage.text] = "Nested"
-                        nested[TestMessage.nested] = null
                     }
                     message[TestMessage.messages] = listOf(1, 2, 3, 4, 5, 6)
-                    writeMessage(streamOut, message.build())
-                    conn.send(streamOut.viewMessage())
-                } else {
-                    val webSocket = WebSocket("ws://${document.location!!.host}").also { webSocketConn = it }
-                    webSocket.binaryType = BinaryType.ARRAYBUFFER
-                    webSocket.addEventListener("open", {
-                        println("We are open")
-                    })
 
-                    webSocket.onmessage = { event ->
-                        val data = event.data as ArrayBuffer
-                        val stream = ByteStreamJS(Int8Array(data).unsafeCast<ByteArray>())
-                        val parseMessage = parseMessage(stream)
-                        console.log(parseMessage)
-                        val bound = BoundMessage<TestMessage>(parseMessage as ObjectField)
-                        console.log(bound[TestMessage.text])
-                        Unit
+                    Dummy.test.call(connectionWithAuth, message).then {
+                        println("Got a result back!")
+                        console.log(it)
+                        console.log(it[TestMessage.text])
+                    }.catch { fail ->
+                        console.log("Fail", fail)
                     }
+                } else {
+                    webSocketConn = WSConnection("ws://${document.location!!.host}").also { webSocketConn = it }
                 }
             }
         }

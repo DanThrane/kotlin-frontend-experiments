@@ -259,56 +259,55 @@ abstract class MessageSchema<Self> {
     var maxIndex: Int = -1
         private set
 
-    fun string(idx: Int) = StringSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun stringNullable(idx: Int) = StringSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun string(idx: Int) = StringSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun stringNullable(idx: Int) = StringSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun binary(idx: Int) = BinarySchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun binaryNullable(idx: Int) = BinarySchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun binary(idx: Int) = BinarySchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun binaryNullable(idx: Int) = BinarySchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun byte(idx: Int) = ByteSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun byteNullable(idx: Int) = ByteSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun byte(idx: Int) = ByteSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun byteNullable(idx: Int) = ByteSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun int(idx: Int) = IntSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun intNullable(idx: Int) = IntSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun int(idx: Int) = IntSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun intNullable(idx: Int) = IntSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun long(idx: Int) = LongSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun longNullable(idx: Int) = LongSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun long(idx: Int) = LongSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun longNullable(idx: Int) = LongSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun double(idx: Int) = DoubleSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun doubleNullable(idx: Int) = DoubleSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun double(idx: Int) = DoubleSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun doubleNullable(idx: Int) = DoubleSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun boolean(idx: Int) = BooleanSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun booleanNullable(idx: Int) = BooleanSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun boolean(idx: Int) = BooleanSchemaField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun booleanNullable(idx: Int) = BooleanSchemaFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun listByte(idx: Int) = ListByteField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun ListByteNullable(idx: Int) = ListByteFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun listByte(idx: Int) = ListByteField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun ListByteNullable(idx: Int) = ListByteFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun listInt(idx: Int) = ListIntField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun ListIntNullable(idx: Int) = ListIntFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun listInt(idx: Int) = ListIntField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun ListIntNullable(idx: Int) = ListIntFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun listLong(idx: Int) = ListLongField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun ListLongNullable(idx: Int) = ListLongFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun listLong(idx: Int) = ListLongField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun ListLongNullable(idx: Int) = ListLongFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun listDouble(idx: Int) = ListDoubleField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun ListDoubleNullable(idx: Int) = ListDoubleFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun listDouble(idx: Int) = ListDoubleField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun ListDoubleNullable(idx: Int) = ListDoubleFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun listString(idx: Int) = ListStringField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun ListStringNullable(idx: Int) = ListStringFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun listString(idx: Int) = ListStringField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun ListStringNullable(idx: Int) = ListStringFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun listBoolean(idx: Int) = ListBooleanField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
-    fun ListBooleanNullable(idx: Int) = ListBooleanFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun listBoolean(idx: Int) = ListBooleanField<Self>(idx).also { maxIndex = max(idx, maxIndex) }
+    protected fun ListBooleanNullable(idx: Int) = ListBooleanFieldNullable<Self>(idx).also { maxIndex = max(idx, maxIndex) }
 
-    fun <Obj : MessageSchema<Obj>> obj(idx: Int, schema: Obj) =
+    protected fun <Obj : MessageSchema<Obj>> obj(idx: Int, schema: Obj) =
         ObjectSchemaField<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
 
-    fun <Obj : MessageSchema<Obj>> objNullable(idx: Int, schema: Obj) =
+    protected fun <Obj : MessageSchema<Obj>> objNullable(idx: Int, schema: Obj) =
         ObjectSchemaFieldNullable<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
 
-
-    fun <Obj : MessageSchema<Obj>> listObj(idx: Int, schema: Obj) =
+    protected fun <Obj : MessageSchema<Obj>> listObj(idx: Int, schema: Obj) =
         ListObjectField<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
 
-    fun <Obj : MessageSchema<Obj>> listObjNullable(idx: Int, schema: Obj) =
+    protected fun <Obj : MessageSchema<Obj>> listObjNullable(idx: Int, schema: Obj) =
         ListObjectFieldNullable<Self, Obj>(idx, schema).also { maxIndex = max(idx, maxIndex) }
 }
 
@@ -586,10 +585,24 @@ class BoundOutgoingMessage<T : MessageSchema<T>>(schema: MessageSchema<T>) {
     }
 
     operator fun <R : MessageSchema<R>> set(
+        field: ObjectSchemaField<T, R>,
+        value: BoundOutgoingMessage<R>
+    ) {
+        fields[field.idx] = value.build()
+    }
+
+    operator fun <R : MessageSchema<R>> set(
         field: ObjectSchemaFieldNullable<T, R>,
         builder: ((BoundOutgoingMessage<R>) -> Unit)?
     ) {
         fields[field.idx] = if (builder != null) BoundOutgoingMessage(field.schema).also(builder).build() else NullField
+    }
+
+    operator fun <R : MessageSchema<R>> set(
+        field: ObjectSchemaFieldNullable<T, R>,
+        value: (BoundOutgoingMessage<R>)?
+    ) {
+        fields[field.idx] = if (value != null) value.build() else NullField
     }
 
     fun build(): ObjectField {
@@ -656,5 +669,12 @@ fun writeMessage(out: ByteOutStream, field: Field) {
     }
 
     out.flush()
+}
+
+fun <T : MessageSchema<T>> buildOutgoing(
+    schema: T,
+    builder: (BoundOutgoingMessage<T>) -> Unit
+): BoundOutgoingMessage<T> {
+    return BoundOutgoingMessage(schema).also(builder)
 }
 
