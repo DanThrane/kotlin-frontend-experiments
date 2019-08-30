@@ -8,7 +8,6 @@ import org.w3c.dom.ARRAYBUFFER
 import org.w3c.dom.BinaryType
 import org.w3c.dom.MessageEvent
 import org.w3c.dom.WebSocket
-import org.w3c.performance.Performance
 import kotlin.browser.window
 import kotlin.js.Promise
 
@@ -18,9 +17,6 @@ class WSConnection(location: String) {
 
     init {
         socket.binaryType = BinaryType.ARRAYBUFFER
-        socket.addEventListener("open", {
-            println("We are open")
-        })
 
         socket.addEventListener("message", { e ->
             val data = (e as MessageEvent).data as ArrayBuffer
@@ -45,6 +41,8 @@ class WSConnection(location: String) {
         })
     }
 
+    fun isOpen(): Boolean = socket.readyState == WebSocket.OPEN
+
     fun send(buffer: ArrayBufferView) {
         socket.send(buffer)
     }
@@ -59,6 +57,73 @@ class WSConnection(location: String) {
 
     fun removeSubscription(requestId: Int) {
         subscriptions.remove(requestId)
+    }
+}
+
+
+typealias QueuedPromise<T> = Pair<(T) -> Unit, (Throwable) -> Unit>
+
+// TODO Use the virtual connections here
+class WSConnectionPool(
+    private val location: String,
+    private val poolSize: Int = 4
+) {
+    private val pool = Array<PooledConnection?>(poolSize) { null }
+    private val queue = ArrayList<QueuedPromise<Pair<Int, WSConnection>>>()
+
+    fun borrowConnection(): Promise<Pair<Int, WSConnection>> {
+        for (idx in pool.indices) {
+            val pooledConnection = pool[idx]
+
+            when {
+                pooledConnection == null -> {
+                    val conn = WSConnection(location)
+                    pool[idx] = PooledConnection(conn, true)
+                    return Promise.resolve(Pair(idx, conn))
+                }
+
+                !pooledConnection.conn.isOpen() -> {
+                    pool[idx] = null
+                    return borrowConnection()
+                }
+
+                !pooledConnection.inUse -> {
+                    return Promise.resolve(Pair(idx, pooledConnection.conn))
+                }
+            }
+        }
+
+        return Promise { resolve, reject -> queue.add(Pair(resolve, reject)) }
+    }
+
+    fun returnConnection(idx: Int) {
+        val conn = pool.getOrNull(idx) ?: return
+        conn.inUse = false
+
+        if (queue.isNotEmpty()) {
+            val (resolve, _) = queue.removeAt(0)
+            resolve(Pair(idx, conn.conn))
+        }
+    }
+
+    companion object {
+        private data class PooledConnection(
+            val conn: WSConnection,
+            var inUse: Boolean
+        )
+    }
+}
+
+fun WSConnectionPool.useConnection(
+    authorization: String? = null,
+    block: (ConnectionWithAuthorization) -> Unit
+) {
+    borrowConnection().then { (idx, conn) ->
+        try {
+            block(ConnectionWithAuthorization(conn, authorization))
+        } finally {
+            returnConnection(idx)
+        }
     }
 }
 

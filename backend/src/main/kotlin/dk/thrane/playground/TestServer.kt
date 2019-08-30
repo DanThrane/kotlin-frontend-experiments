@@ -33,11 +33,11 @@ object ConnectionController : Controller() {
     }
 
     internal val prehandler: PreHandler = handler@{ rpc, message ->
-        println(rpc)
-        println(message)
-        if (rpc?.namespace == Connections.namespace) return@handler PreHandlerAction.Continue
-
         val connectionId = message[EmptyRequestSchema.connectionId]
+
+        // We consider conn 0 to be implicitly initialized by WebSocket open
+        if (connectionId == 0) return@handler PreHandlerAction.Continue
+
         val requestId = message[EmptyRequestSchema.requestId]
         val socketId = socketId
 
@@ -103,6 +103,16 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
             sendHttpResponse(404, defaultHeaders())
         } else if (path.startsWith("/assets/")) {
             val file = File(rootDir, path)
+                .normalize()
+                .takeIf { it.absolutePath.startsWith(rootDirPath) && it.exists() && it.isFile }
+
+            if (file == null) {
+                sendHttpResponse(404, defaultHeaders())
+            } else {
+                sendHttpResponseWithFile(file)
+            }
+        } else if (path.startsWith("/src/")) {
+            val file = File(File(rootDir, "assets"), path)
                 .normalize()
                 .takeIf { it.absolutePath.startsWith(rootDirPath) && it.exists() && it.isFile }
 
