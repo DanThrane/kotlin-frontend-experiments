@@ -141,7 +141,7 @@ class ObjectField(val fields: List<Field>) : Field(FieldType.OBJ_START) {
     }
 }
 
-class BadMessageException(message: String = "") : RPCException(ResponseCode.BAD_REQUEST, message)
+class BadMessageException(message: String = "") : RuntimeException()
 
 abstract class ByteStream(private val buffer: ByteArray) {
     private var ptr = 0

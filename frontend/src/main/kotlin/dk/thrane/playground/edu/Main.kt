@@ -1,9 +1,7 @@
-package edu
+package dk.thrane.playground.edu
 
 import kotlin.browser.document
 import dk.thrane.playground.*
-import org.khronos.webgl.Int8Array
-import org.khronos.webgl.Uint8Array
 
 private val globalTheme = css {
     margin = 0.px

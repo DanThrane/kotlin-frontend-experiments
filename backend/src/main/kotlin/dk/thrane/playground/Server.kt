@@ -9,6 +9,7 @@ import java.util.*
 import kotlin.collections.ArrayList
 
 class HttpClient(
+    val socketId: String,
     val ins: BufferedInputStream,
     val outs: BufferedOutputStream
 ) {
@@ -31,13 +32,14 @@ interface WebSocketRequestHandler {
 }
 
 fun startServer(
-    socket: ServerSocket = ServerSocket(8080),
+    socket: ServerSocket = ServerSocket(8080, 4096),
     httpRequestHandler: HttpRequestHandler? = null,
     webSocketRequestHandler: WebSocketRequestHandler? = null
 ) {
     val sha1 = MessageDigest.getInstance("SHA-1")
     val websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
+    println("Server is ready at ${socket.inetAddress.hostName}:${socket.localPort}")
     while (true) {
         val rawClient = socket.accept()
         Thread {
@@ -46,7 +48,7 @@ fun startServer(
                     val ins = rawClient.inputStream.buffered()
                     val outs = rawClient.outputStream.buffered()
 
-                    val client = HttpClient(ins, outs)
+                    val client = HttpClient(UUID.randomUUID().toString(), ins, outs)
 
                     val requestLine = ins.readLine() ?: break
                     val tokens = requestLine.split(" ")

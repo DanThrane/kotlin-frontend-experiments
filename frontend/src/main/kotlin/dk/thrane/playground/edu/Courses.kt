@@ -1,14 +1,10 @@
-package edu
+package dk.thrane.playground.edu
 
 import org.w3c.dom.Element
 import dk.thrane.playground.*
-import org.khronos.webgl.ArrayBuffer
-import org.khronos.webgl.ArrayBufferView
-import org.khronos.webgl.Int8Array
+import dk.thrane.playground.edu.api.Courses
+import dk.thrane.playground.edu.api.PaginationRequest
 import org.khronos.webgl.Uint8Array
-import org.w3c.dom.ARRAYBUFFER
-import org.w3c.dom.BinaryType
-import org.w3c.dom.WebSocket
 import kotlin.browser.document
 
 data class Course(val name: String)
@@ -58,12 +54,18 @@ fun Element.courses() {
                     }
                     message[TestMessage.messages] = listOf(1, 2, 3, 4, 5, 6)
 
-                    Dummy.test.call(connectionWithAuth, message).then {
-                        println("Got a result back!")
-                        console.log(it)
-                        console.log(it[TestMessage.text])
-                    }.catch { fail ->
-                        console.log("Fail", fail)
+                    Connections.open.call(connectionWithAuth, 0, buildOutgoing(OpenConnectionSchema) {
+                        it[OpenConnectionSchema.id] = 1337
+                    }).then {
+                        Courses.list.call(connectionWithAuth, 1337, buildOutgoing(PaginationRequest) { msg ->
+                            msg[PaginationRequest.itemsPerPage] = 25
+                            msg[PaginationRequest.page] = 0
+                        }).then {
+                            println("Got a result back!")
+                            console.log(it)
+                        }.catch { fail ->
+                            console.log("Fail", fail)
+                        }
                     }
                 } else {
                     webSocketConn = WSConnection("ws://${document.location!!.host}").also { webSocketConn = it }

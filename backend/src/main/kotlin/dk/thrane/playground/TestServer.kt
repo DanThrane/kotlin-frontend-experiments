@@ -1,25 +1,98 @@
 package dk.thrane.playground
 
+import dk.thrane.playground.edu.CourseController
 import java.io.File
+import kotlin.collections.ArrayList
 
-class TestServer : HttpRequestHandler, WebSocketRequestHandler {
-    private val controllers = ArrayList<Controller>()
+object ConnectionController : Controller() {
+    private val knownConnections = HashMap<String, Set<Int>>()
 
-    init {
-        controllers.add(object : Controller() {
-            override fun configureController() {
-                implement(Dummy.test) { request ->
-                    val text = request[TestMessage.text]
+    override fun configureController() {
+        implement(Connections.open) {
+            synchronized(knownConnections) {
+                val current = knownConnections[socketId] ?: emptySet()
+                knownConnections[socketId] = current + request[OpenConnectionSchema.id]
+            }
 
-                    buildOutgoing(TestMessage) { out ->
-                        out[TestMessage.text] = "Hello!$text"
-                        out[TestMessage.messages] = listOf(1, 2, 3, 4)
-                    }
+            respond { }
+        }
+
+        implement(Connections.close) {
+            synchronized(knownConnections) {
+                val current = knownConnections[socketId] ?: emptySet()
+                val newSet = current - request[CloseConnectionSchema.id]
+                if (newSet.isNotEmpty()) {
+                    knownConnections[socketId] = newSet
+                } else {
+                    knownConnections.remove(socketId)
                 }
             }
-        })
 
-        controllers.forEach { it.configure() }
+            respond { }
+        }
+    }
+
+    internal val prehandler: PreHandler = handler@{ rpc, message ->
+        println(rpc)
+        println(message)
+        if (rpc?.namespace == Connections.namespace) return@handler PreHandlerAction.Continue
+
+        val connectionId = message[EmptyRequestSchema.connectionId]
+        val requestId = message[EmptyRequestSchema.requestId]
+        val socketId = socketId
+
+        val connsForSocket = knownConnections[socketId] ?: emptySet()
+        if (connectionId !in connsForSocket) {
+            PreHandlerAction.Terminate(
+                EmptyRPC.outgoingResponse(
+                    connectionId,
+                    requestId,
+                    ResponseCode.BAD_REQUEST,
+                    BoundOutgoingMessage(EmptySchema)
+                )
+            )
+        } else {
+            PreHandlerAction.Continue
+        }
+    }
+}
+
+sealed class PreHandlerAction {
+    object Continue : PreHandlerAction()
+    class Terminate(val responseMessage: BoundOutgoingMessage<ResponseSchema<EmptySchema>>) : PreHandlerAction()
+}
+
+typealias PreHandler = HttpClient.(
+    rpc: RPC<*, *>?,
+    message: BoundMessage<RequestSchema<EmptySchema>>
+) -> PreHandlerAction
+
+typealias PostHandler = HttpClient.(
+    rpc: RPC<*, *>?,
+    message: BoundMessage<RequestSchema<EmptySchema>>
+) -> Unit
+
+abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
+    private val controllers = ArrayList<Controller>()
+    private val preHandlers = ArrayList<PreHandler>()
+    private val postHandlers = ArrayList<PostHandler>()
+
+    init {
+        addController(ConnectionController)
+        addMiddlewarePreHandling(ConnectionController.prehandler)
+    }
+
+    protected fun addController(controller: Controller) {
+        controllers.add(controller)
+        controller.configure()
+    }
+
+    protected fun addMiddlewarePreHandling(handler: PreHandler) {
+        preHandlers.add(handler)
+    }
+
+    protected fun addMiddlewarePostHandling(handler: PostHandler) {
+        postHandlers.add(handler)
     }
 
     override fun HttpClient.handleRequest(method: HttpMethod, path: String) {
@@ -55,28 +128,105 @@ class TestServer : HttpRequestHandler, WebSocketRequestHandler {
             return
         }
 
+        var connectionId: Int? = null
+        var requestId: Int? = null
+        var rpcUsedForHandling: RPC<*, *>? = null
+        var didHandleMessage = false
         val requestMessage = BoundMessage<RequestSchema<EmptySchema>>(message)
-        val requestName = requestMessage[EmptyRequestSchema.requestName]
-        val requestId = requestMessage[EmptyRequestSchema.requestId]
-        val authorization = requestMessage[EmptyRequestSchema.authorization]
 
-        for (controller in controllers) {
-            val (rpc, handler) = controller.findHandler(requestName) ?: continue
+        try {
+            val requestName = requestMessage[EmptyRequestSchema.requestName]
+            requestId = requestMessage[EmptyRequestSchema.requestId]
+            connectionId = requestMessage[EmptyRequestSchema.connectionId]
 
-            @Suppress("UNCHECKED_CAST")
-            // These casts are non-sense but it doesn't really matter since we enforce type safety through the
-            // controller interface
-            handleRPC(
-                requestId,
-                rpc as RPC<EmptySchema, EmptySchema>,
-                handler as RPCHandler<EmptySchema, EmptySchema>,
-                requestMessage
+            // TODO We need a unified place to set connection id and request id
+            controllers@ for (controller in controllers) {
+                println("$controller and $requestName")
+                val (rpc, handler) = controller.findHandler(requestName) ?: continue
+                rpcUsedForHandling = rpc
+
+                for (preHandler in preHandlers) {
+                    when (val handlerAction = preHandler(rpc, requestMessage)) {
+                        PreHandlerAction.Continue -> {
+                            // Do nothing (Continue to next handler)
+                        }
+
+                        is PreHandlerAction.Terminate -> {
+                            didHandleMessage = true
+                            sendMessage(handlerAction.responseMessage.build())
+                            break@controllers
+                        }
+                    }
+                }
+
+                @Suppress("UNCHECKED_CAST")
+                // These casts are non-sense but it doesn't really matter since we enforce type safety through the
+                // controller interface
+                handleRPC(
+                    connectionId,
+                    requestId,
+                    rpc as RPC<EmptySchema, EmptySchema>,
+                    handler as RPCHandler<EmptySchema, EmptySchema>,
+                    requestMessage
+                )
+                break
+            }
+        } catch (ex: RPCException) {
+            ex.printStackTrace()
+            sendMessage(
+                EmptyRPC.outgoingResponse(
+                    connectionId ?: -1,
+                    requestId ?: -1,
+                    ResponseCode.BAD_REQUEST,
+                    BoundOutgoingMessage(EmptySchema)
+                ).build()
             )
-            break
+            return
+        }
+
+        if (!didHandleMessage) {
+            var didSendPreHandler = false
+            handlers@ for (preHandler in preHandlers) {
+                when (val handlerAction = preHandler(null, requestMessage)) {
+                    PreHandlerAction.Continue -> {
+                        // Do nothing (Continue to next handler)
+                    }
+
+                    is PreHandlerAction.Terminate -> {
+                        sendMessage(handlerAction.responseMessage.build())
+                        didSendPreHandler = true
+                        break@handlers
+                    }
+                }
+            }
+
+            if (!didSendPreHandler) {
+                val outgoing = EmptyRPC.outgoingResponse(
+                    connectionId!!,
+                    requestId!!,
+                    ResponseCode.NOT_FOUND,
+                    BoundOutgoingMessage(EmptySchema)
+                )
+
+                sendMessage(outgoing.build())
+            }
+        }
+
+        for (postHandler in postHandlers) {
+            postHandler(rpcUsedForHandling, requestMessage)
+        }
+    }
+
+    private fun HttpClient.sendMessage(outgoing: ObjectField) {
+        defaultBufferPool.useInstance { buffer ->
+            val out = ByteOutStreamJVM(buffer)
+            writeMessage(out, outgoing)
+            sendWebsocketFrame(WebSocketOpCode.BINARY, buffer, 0, out.ptr)
         }
     }
 
     private fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> HttpClient.handleRPC(
+        connectionId: Int,
         requestId: Int,
         rpc: RPC<Req, Res>,
         handler: RPCHandler<Req, Res>,
@@ -84,14 +234,13 @@ class TestServer : HttpRequestHandler, WebSocketRequestHandler {
     ) {
         try {
             val payload = requestMessage[rpc.request.payload]
-            val response = handler(payload)
-            val outgoing = rpc.outgoingResponse(requestId, ResponseCode.OK, response)
+            val authorization = requestMessage[rpc.request.authorization]
 
-            defaultBufferPool.useInstance { buffer ->
-                val out = ByteOutStreamJVM(buffer)
-                writeMessage(out, outgoing.build())
-                sendWebsocketFrame(WebSocketOpCode.BINARY, buffer, 0, out.ptr)
-            }
+            println("Handling $rpc ($requestId) with $payload")
+            val (statusCode, response) = RPCHandlerContext(payload, authorization, socketId, rpc).handler()
+            val outgoing = rpc.outgoingResponse(connectionId, requestId, statusCode, response)
+
+            sendMessage(outgoing.build())
         } catch (ex: Throwable) {
             val statusCode = if (ex is RPCException) {
                 ex.statusCode
@@ -100,19 +249,40 @@ class TestServer : HttpRequestHandler, WebSocketRequestHandler {
                 ResponseCode.INTERNAL_ERROR
             }
 
-            defaultBufferPool.useInstance { buffer ->
-                val outgoing = BoundOutgoingMessage(EmptyResponseSchema)
-                outgoing[EmptyResponseSchema.requestId] = requestId
-                outgoing[EmptyResponseSchema.statusCode] = statusCode.statusCode
-                val out = ByteOutStreamJVM(buffer)
-                writeMessage(out, outgoing.build())
-                sendWebsocketFrame(WebSocketOpCode.BINARY, buffer, 0, out.ptr)
-            }
+            val outgoing =
+                EmptyRPC.outgoingResponse(connectionId, requestId, statusCode, BoundOutgoingMessage(EmptySchema))
+            sendMessage(outgoing.build())
         }
     }
 }
 
-typealias RPCHandler<Req, Res> = (call: BoundMessage<Req>) -> BoundOutgoingMessage<Res>
+/**
+ * An empty [RPC] used for generating responses without a payload. This is useful for errors.
+ */
+private val EmptyRPC = RPC("~empty~", "~empty~", EmptySchema, EmptySchema)
+
+class RPCHandlerContext<Req : MessageSchema<Req>, Res : MessageSchema<Res>>(
+    val request: BoundMessage<Req>,
+    val authorization: String?,
+    val socketId: String,
+    val rpc: RPC<Req, Res>
+)
+
+class RespondingContext<Res : MessageSchema<Res>>(
+    val schema: Res,
+    val message: BoundOutgoingMessage<Res>
+)
+
+inline fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPCHandlerContext<Req, Res>.respond(
+    code: ResponseCode = ResponseCode.OK,
+    builder: RespondingContext<Res>.() -> Unit
+): Pair<ResponseCode, BoundOutgoingMessage<Res>> {
+    val message = BoundOutgoingMessage(rpc.responsePayload)
+    RespondingContext(rpc.responsePayload, message).builder()
+    return Pair(code, message)
+}
+
+typealias RPCHandler<Req, Res> = RPCHandlerContext<Req, Res>.() -> Pair<ResponseCode, BoundOutgoingMessage<Res>>
 typealias UntypedRPChandler = (call: BoundMessage<*>) -> BoundOutgoingMessage<*>
 
 abstract class Controller {
@@ -142,6 +312,11 @@ abstract class Controller {
     protected abstract fun configureController()
 }
 
+class TestServer : BaseServer() {
+    init {
+        addController(CourseController())
+    }
+}
 
 fun main() {
     val server = TestServer()

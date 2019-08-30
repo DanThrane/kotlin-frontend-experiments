@@ -66,20 +66,26 @@ private var requestIdCounter = 0
 
 fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
+    connectionId: Int,
     message: BoundOutgoingMessage<Req>
 ): Promise<BoundMessage<Res>> {
+    console.log("Calling --> ${this.requestName}", message)
     val (connection, auth) = connectionWithAuth
     val requestId = requestIdCounter++
     val stream = ByteOutStreamJS(Uint8Array(1024 * 64))
-    writeMessage(stream, outgoingRequest(requestId, auth, message).build())
+    writeMessage(stream, outgoingRequest(connectionId, requestId, auth, message).build())
 
     return Promise { resolve, reject ->
         connection.addSubscription<Res>(requestId) { result ->
             if (result.isFailure) {
-                reject(result.exceptionOrNull()!!)
+                val exception = result.exceptionOrNull() as RPCException
+                console.log("[${exception.statusCode}] --> ${this.requestName}", exception)
+                reject(exception)
             } else {
                 @Suppress("UNCHECKED_CAST")
                 val responseMessage = result.getOrNull()!! as BoundMessage<ResponseSchema<Res>>
+                val responseCode = ResponseCode.valueOf(responseMessage[response.statusCode])
+                console.log("[$responseCode] ${this.requestName}", responseMessage[response.response])
                 resolve(responseMessage[response.response])
             }
 

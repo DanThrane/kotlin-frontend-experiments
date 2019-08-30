@@ -141,7 +141,7 @@ class ObjectField(val fields: List<Field>) : Field(FieldType.OBJ_START) {
     }
 }
 
-class BadMessageException(message: String = "") : RuntimeException()
+class BadMessageException(message: String = "") : RPCException(ResponseCode.BAD_REQUEST, message)
 
 abstract class ByteStream(private val buffer: ByteArray) {
     private var ptr = 0
@@ -671,7 +671,7 @@ fun writeMessage(out: ByteOutStream, field: Field) {
     out.flush()
 }
 
-fun <T : MessageSchema<T>> buildOutgoing(
+inline fun <T : MessageSchema<T>> buildOutgoing(
     schema: T,
     builder: (BoundOutgoingMessage<T>) -> Unit
 ): BoundOutgoingMessage<T> {

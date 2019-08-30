@@ -1,4 +1,4 @@
-package edu
+package dk.thrane.playground.edu
 
 import dk.thrane.playground.*
 
