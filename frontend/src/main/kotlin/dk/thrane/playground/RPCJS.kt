@@ -8,6 +8,8 @@ import org.w3c.dom.ARRAYBUFFER
 import org.w3c.dom.BinaryType
 import org.w3c.dom.MessageEvent
 import org.w3c.dom.WebSocket
+import org.w3c.performance.Performance
+import kotlin.browser.window
 import kotlin.js.Promise
 
 class WSConnection(location: String) {
@@ -62,13 +64,14 @@ class WSConnection(location: String) {
 
 data class ConnectionWithAuthorization(val connection: WSConnection, val authorization: String? = null)
 
-private var requestIdCounter = 0
+private var requestIdCounter = 128
 
 fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
     connectionId: Int,
     message: BoundOutgoingMessage<Req>
 ): Promise<BoundMessage<Res>> {
+    val start = window.performance.now()
     console.log("Calling --> ${this.requestName}", message)
     val (connection, auth) = connectionWithAuth
     val requestId = requestIdCounter++
@@ -77,15 +80,16 @@ fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
 
     return Promise { resolve, reject ->
         connection.addSubscription<Res>(requestId) { result ->
+            val time = window.performance.now() - start
             if (result.isFailure) {
                 val exception = result.exceptionOrNull() as RPCException
-                console.log("[${exception.statusCode}] --> ${this.requestName}", exception)
+                console.log("[${exception.statusCode}] --> ${this.requestName} ($time ms)", exception)
                 reject(exception)
             } else {
                 @Suppress("UNCHECKED_CAST")
                 val responseMessage = result.getOrNull()!! as BoundMessage<ResponseSchema<Res>>
                 val responseCode = ResponseCode.valueOf(responseMessage[response.statusCode])
-                console.log("[$responseCode] ${this.requestName}", responseMessage[response.response])
+                console.log("[$responseCode] ${this.requestName} ($time ms)", responseMessage[response.response])
                 resolve(responseMessage[response.response])
             }
 

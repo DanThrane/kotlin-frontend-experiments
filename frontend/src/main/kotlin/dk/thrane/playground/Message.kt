@@ -146,7 +146,7 @@ class BadMessageException(message: String = "") : RPCException(ResponseCode.BAD_
 abstract class ByteStream(private val buffer: ByteArray) {
     private var ptr = 0
 
-    fun read(): Int = buffer[ptr++].toInt()
+    fun read(): Int = (buffer[ptr++].toInt() and 0xff)
 
     fun readInt(): Int {
         val ch1 = read()
@@ -154,11 +154,8 @@ abstract class ByteStream(private val buffer: ByteArray) {
         val ch3 = read()
         val ch4 = read()
 
-        if (ch1 or ch2 or ch3 or ch4 < 0) {
-            throw IllegalStateException("EOF")
-        }
-
-        return (ch1 shl 24) + (ch2 shl 16) + (ch3 shl 8) + (ch4 shl 0)
+        val i = (ch1 shl 24) + (ch2 shl 16) + (ch3 shl 8) + (ch4 shl 0)
+        return i
     }
 
     fun readLong(): Long {
