@@ -77,10 +77,8 @@ class WSConnection(location: String, private val onOpen: (conn: WSConnection) ->
     }
 }
 
-
 typealias QueuedPromise<T> = Pair<(T) -> Unit, (Throwable) -> Unit>
 
-// TODO Use the virtual connections here
 class WSConnectionPool(
     private val location: String,
     private val poolSize: Int = 4
@@ -205,12 +203,12 @@ data class VirtualConnection(
 
 val STATELESS_CONNECTION = VirtualConnection(id = 0, autoReconnect = false, onOpen = {}, onClose = {})
 
-fun WSConnectionPool.useConnection(
+fun <R> WSConnectionPool.useConnection(
     virtualConnection: VirtualConnection = STATELESS_CONNECTION,
     authorization: String? = null,
-    block: (ConnectionWithAuthorization) -> Unit
-) {
-    borrowConnection().then { (idx, conn) ->
+    block: (ConnectionWithAuthorization) -> R
+): Promise<R> {
+    return borrowConnection().then { (idx, conn) ->
         try {
             block(ConnectionWithAuthorization(conn, virtualConnection, authorization))
         } finally {
@@ -225,7 +223,15 @@ data class ConnectionWithAuthorization internal constructor(
     val authorization: String? = null
 )
 
-private var requestIdCounter = 128
+private var requestIdCounter = 0
+
+fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
+    pool: WSConnectionPool,
+    message: BoundOutgoingMessage<Req>,
+    vc: VirtualConnection = STATELESS_CONNECTION
+): Promise<BoundMessage<Res>> {
+    return pool.useConnection(vc) { conn -> call(conn, message) }.then { it }
+}
 
 fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,

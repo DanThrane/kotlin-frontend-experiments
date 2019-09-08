@@ -43,7 +43,7 @@ fun main() {
                 route(
                     route = {},
                     children = {
-                        Header.activePage.currentValue = Page.HOME
+                        Header.activePage.currentValue = SitePage.HOME
                         text("Root")
                     }
                 )
@@ -64,7 +64,7 @@ fun main() {
                     },
 
                     children = {
-                        Header.activePage.currentValue = Page.CALENDAR
+                        Header.activePage.currentValue = SitePage.CALENDAR
                         text("Calendar")
                         repeat(10) {
                             Toasts.push(Toast(ToastType.INFO, "This is a test $it", 1000L))

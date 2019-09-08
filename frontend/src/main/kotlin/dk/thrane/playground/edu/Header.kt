@@ -49,14 +49,14 @@ private val style = css {
     }
 }
 
-enum class Page {
+enum class SitePage {
     HOME,
     COURSES,
     CALENDAR
 }
 
 object Header {
-    val activePage = BoundData(Page.HOME)
+    val activePage = BoundData(SitePage.HOME)
 }
 
 fun Element.header() {
@@ -68,17 +68,17 @@ fun Element.header() {
         }
 
         routeLink(href = "/") {
-            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == Page.HOME }
+            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == SitePage.HOME }
             text("Home")
         }
 
         routeLink(href = "/courses") {
-            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == Page.COURSES }
+            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == SitePage.COURSES }
             text("Courses")
         }
 
         routeLink(href = "/calendar") {
-            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == Page.CALENDAR }
+            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == SitePage.CALENDAR }
             text("Calendar")
         }
     }

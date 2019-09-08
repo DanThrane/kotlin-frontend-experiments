@@ -7,9 +7,19 @@ class CourseController : Controller() {
     override fun configureController() {
         implement(Courses.list) {
             respond {
-                message[schema.items] = emptyList()
+                message[schema.items] = listOf(
+                    buildOutgoing(Course) { c ->
+                        c[Course.id] = "1"
+                        c[Course.name] = "Course 101"
+                    },
+                    buildOutgoing(Course) { c ->
+                        c[Course.id] = "2"
+                        c[Course.name] = "Course 201"
+                    }
+                )
+
                 message[schema.itemsPerPage] = request[PaginationRequest.itemsPerPage]
-                message[schema.itemsInTotal] = 0
+                message[schema.itemsInTotal] = 2
             }
         }
 
