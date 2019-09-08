@@ -75,24 +75,28 @@ inline fun Element.h2(
 ) {
     baseElement("h2", attrs, children)
 }
+
 inline fun Element.h3(
     attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
     children: (HTMLHeadingElement.() -> Unit) = {}
 ) {
     baseElement("h3", attrs, children)
 }
+
 inline fun Element.h4(
     attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
     children: (HTMLHeadingElement.() -> Unit) = {}
 ) {
     baseElement("h4", attrs, children)
 }
+
 inline fun Element.h5(
     attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
     children: (HTMLHeadingElement.() -> Unit) = {}
 ) {
     baseElement("h5", attrs, children)
 }
+
 inline fun Element.h6(
     attrs: CommonAttributes<HTMLHeadingElement> = CommonAttributes(),
     children: (HTMLHeadingElement.() -> Unit) = {}
@@ -215,4 +219,8 @@ data class CommonAttributes<T : Element>(
         }
         return result
     }
+}
+
+fun <T : Element> CommonAttributes<T>.withClasses(vararg classes: String): CommonAttributes<T> {
+    return copy(classes = this.classes + classes)
 }

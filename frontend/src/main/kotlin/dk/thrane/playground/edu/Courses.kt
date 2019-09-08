@@ -6,6 +6,7 @@ import dk.thrane.playground.edu.api.Course
 import dk.thrane.playground.edu.api.Courses
 import dk.thrane.playground.edu.api.PaginationRequest
 import kotlin.browser.document
+import kotlin.browser.window
 
 private val container = css {
     width = 900.px
@@ -47,6 +48,24 @@ fun Element.courses() {
                     val schema = Courses.list.responsePayload
                     page[schema.items]
                 }
+            }
+        }
+
+        flex {
+            primaryButton {
+                on(Events.click) {
+                    window.alert("You clicked!")
+                }
+
+                text("This is a button")
+            }
+
+            outlineButton {
+                on(Events.click) {
+                    window.alert("outline!")
+                }
+
+                text("Outline!")
             }
         }
     }
