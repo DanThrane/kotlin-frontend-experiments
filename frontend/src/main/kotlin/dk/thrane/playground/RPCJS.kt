@@ -11,12 +11,17 @@ import org.w3c.dom.WebSocket
 import kotlin.browser.window
 import kotlin.js.Promise
 
-class WSConnection(location: String) {
+class WSConnection(location: String, private val onOpen: (conn: WSConnection) -> Unit) {
     private val socket: WebSocket = WebSocket(location)
     private val subscriptions = HashMap<Int, (Result<BoundMessage<*>>) -> Unit>()
+    private val onCloseHandlers = ArrayList<() -> Unit>()
 
     init {
         socket.binaryType = BinaryType.ARRAYBUFFER
+
+        socket.addEventListener("open", { _ ->
+            onOpen(this)
+        })
 
         socket.addEventListener("message", { e ->
             val data = (e as MessageEvent).data as ArrayBuffer
@@ -39,6 +44,10 @@ class WSConnection(location: String) {
 
             subscriptions[requestId]?.invoke(result)
         })
+
+        socket.addEventListener("close", { _ ->
+            onCloseHandlers.forEach { it() }
+        })
     }
 
     fun isOpen(): Boolean = socket.readyState == WebSocket.OPEN
@@ -55,8 +64,16 @@ class WSConnection(location: String) {
         subscriptions[requestId] = handler as (Result<BoundMessage<*>>) -> Unit
     }
 
+    fun addOnCloseHandler(handler: () -> Unit) {
+        onCloseHandlers.add(handler)
+    }
+
     fun removeSubscription(requestId: Int) {
         subscriptions.remove(requestId)
+    }
+
+    fun removeOnCloseHandler(onClose: () -> Unit) {
+        onCloseHandlers.remove(onClose)
     }
 }
 
@@ -68,6 +85,7 @@ class WSConnectionPool(
     private val location: String,
     private val poolSize: Int = 4
 ) {
+    private var connectionIdCounter: Int = 0
     private val pool = Array<PooledConnection?>(poolSize) { null }
     private val queue = ArrayList<QueuedPromise<Pair<Int, WSConnection>>>()
 
@@ -77,9 +95,12 @@ class WSConnectionPool(
 
             when {
                 pooledConnection == null -> {
-                    val conn = WSConnection(location)
-                    pool[idx] = PooledConnection(conn, true)
-                    return Promise.resolve(Pair(idx, conn))
+                    return Promise { resolve, reject ->
+                        WSConnection(location) { conn ->
+                            pool[idx] = PooledConnection(conn, true, HashSet())
+                            resolve(Pair(idx, conn))
+                        }
+                    }
                 }
 
                 !pooledConnection.conn.isOpen() -> {
@@ -93,6 +114,7 @@ class WSConnectionPool(
             }
         }
 
+        println("Going in the queue!!!!")
         return Promise { resolve, reject -> queue.add(Pair(resolve, reject)) }
     }
 
@@ -106,42 +128,115 @@ class WSConnectionPool(
         }
     }
 
+    fun openConnection(
+        autoReconnect: Boolean = true,
+        onOpen: () -> Unit = {},
+        onClose: () -> Unit = {}
+    ): Promise<VirtualConnection> {
+        val vc = VirtualConnection(
+            id = connectionIdCounter++,
+            autoReconnect = autoReconnect,
+            onOpen = onOpen,
+            onClose = onClose
+        )
+
+        return openConnection(vc)
+    }
+
+    private fun openConnection(vc: VirtualConnection): Promise<VirtualConnection> {
+        return borrowConnection().then { (idx, conn) ->
+            try {
+                conn.addOnCloseHandler {
+                    vc.onClose()
+                    if (vc.autoReconnect) {
+                        openConnection(vc)
+                    }
+                }
+
+                pool[idx]!!.virtualConnections += vc
+                Connections.open.call(
+                    ConnectionWithAuthorization(conn),
+                    buildOutgoing(OpenConnectionSchema) {
+                        it[OpenConnectionSchema.id] = vc.id
+                    }
+                ).then { vc.onOpen() }
+
+                vc
+            } finally {
+                returnConnection(idx)
+            }
+        }
+    }
+
+    fun closeConnection(vc: VirtualConnection) {
+        for (conn in pool) {
+            if (conn === null) continue
+
+            val didRemove = conn.virtualConnections.remove(vc)
+            if (didRemove) {
+                if (conn.conn.isOpen()) {
+                    Connections.close.call(
+                        ConnectionWithAuthorization(conn.conn),
+                        buildOutgoing(CloseConnectionSchema) { it[CloseConnectionSchema.id] = vc.id }
+                    ).then { vc.onClose() }.catch { vc.onClose() }
+                }
+
+                conn.conn.removeOnCloseHandler(vc.onClose)
+                break
+            }
+        }
+    }
+
     companion object {
         private data class PooledConnection(
             val conn: WSConnection,
-            var inUse: Boolean
+            var inUse: Boolean,
+            val virtualConnections: MutableSet<VirtualConnection>
         )
     }
 }
 
+data class VirtualConnection(
+    internal val id: Int,
+    internal val autoReconnect: Boolean,
+    internal val onOpen: () -> Unit,
+    internal val onClose: () -> Unit
+)
+
+val STATELESS_CONNECTION = VirtualConnection(id = 0, autoReconnect = false, onOpen = {}, onClose = {})
+
 fun WSConnectionPool.useConnection(
+    virtualConnection: VirtualConnection = STATELESS_CONNECTION,
     authorization: String? = null,
     block: (ConnectionWithAuthorization) -> Unit
 ) {
     borrowConnection().then { (idx, conn) ->
         try {
-            block(ConnectionWithAuthorization(conn, authorization))
+            block(ConnectionWithAuthorization(conn, virtualConnection, authorization))
         } finally {
             returnConnection(idx)
         }
     }
 }
 
-data class ConnectionWithAuthorization(val connection: WSConnection, val authorization: String? = null)
+data class ConnectionWithAuthorization internal constructor(
+    val connection: WSConnection,
+    val virtualConnection: VirtualConnection = STATELESS_CONNECTION,
+    val authorization: String? = null
+)
 
 private var requestIdCounter = 128
 
 fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
-    connectionId: Int,
     message: BoundOutgoingMessage<Req>
 ): Promise<BoundMessage<Res>> {
     val start = window.performance.now()
     console.log("Calling --> ${this.requestName}", message)
-    val (connection, auth) = connectionWithAuth
+    val (connection, virtualConnection, auth) = connectionWithAuth
     val requestId = requestIdCounter++
     val stream = ByteOutStreamJS(Uint8Array(1024 * 64))
-    writeMessage(stream, outgoingRequest(connectionId, requestId, auth, message).build())
+    writeMessage(stream, outgoingRequest(virtualConnection.id, requestId, auth, message).build())
 
     return Promise { resolve, reject ->
         connection.addSubscription<Res>(requestId) { result ->

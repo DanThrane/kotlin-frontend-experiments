@@ -21,8 +21,7 @@ private val coursesSurface = css {
 
 fun Element.courses() {
     Header.activePage.currentValue = Page.COURSES
-    var webSocketConn: WSConnection? = null
-    val streamOut = ByteOutStreamJS(Uint8Array(1024 * 64))
+    val pool = WSConnectionPool("ws://${document.location!!.host}")
 
     div(A(klass = container)) {
         text("Courses!")
@@ -44,31 +43,19 @@ fun Element.courses() {
             text("Do websockets2!")
 
             on("click") {
-                val conn = webSocketConn
-                if (conn != null) {
-                    val connectionWithAuth = ConnectionWithAuthorization(conn)
-                    val message = BoundOutgoingMessage(TestMessage)
-                    message[TestMessage.text] = "Hello!"
-                    message[TestMessage.nested] = { nested ->
-                        nested[TestMessage.text] = "Nested"
-                    }
-                    message[TestMessage.messages] = listOf(1, 2, 3, 4, 5, 6)
-
-                    Connections.open.call(connectionWithAuth, 0, buildOutgoing(OpenConnectionSchema) {
-                        it[OpenConnectionSchema.id] = 1337
-                    }).then {
-                        Courses.list.call(connectionWithAuth, 1337, buildOutgoing(PaginationRequest) { msg ->
+                pool.useConnection { conn ->
+                    Courses.list.call(
+                        conn,
+                        buildOutgoing(PaginationRequest) { msg ->
                             msg[PaginationRequest.itemsPerPage] = 25
                             msg[PaginationRequest.page] = 0
-                        }).then {
-                            println("Got a result back!")
-                            console.log(it)
-                        }.catch { fail ->
-                            console.log("Fail", fail)
                         }
+                    ).then {
+                        println("Got a result back!")
+                        console.log(it)
+                    }.catch { fail ->
+                        console.log("Failure", fail)
                     }
-                } else {
-                    webSocketConn = WSConnection("ws://${document.location!!.host}").also { webSocketConn = it }
                 }
             }
         }
