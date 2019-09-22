@@ -24,7 +24,7 @@ abstract class SQLTable(val name: String, val schema: String? = null) {
         jdbcType: T,
         notNull: Boolean
     ): SQLField<T> {
-        val element = SQLField(name, type, jdbcType)
+        val element = SQLField(name, type, jdbcType, notNull)
         backingFields.add(element)
         return element
     }
