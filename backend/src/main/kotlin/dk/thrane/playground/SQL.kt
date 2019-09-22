@@ -5,38 +5,6 @@ import java.sql.*
 
 typealias ConnectionPool = ObjectPool<Connection>
 
-fun main() {
-    val pool = ObjectPool<Connection>(
-        size = 1,
-        itemGenerator = {
-            Class.forName("org.h2.Driver")
-            DriverManager.getConnection("jdbc:h2:mem:data;DB_CLOSE_DELAY=-1", "sa", "")
-        },
-        reset = {}
-    )
-
-    pool.useInstance { conn ->
-        conn.prepareStatement(MyTable.creationScript()).executeUpdate()
-
-        conn.insert(
-            MyTable,
-            (0 until 100).map { idx ->
-                SQLRow().also { row ->
-                    row[MyTable.a] = "A: $idx"
-                    row[MyTable.b] = "B: $idx"
-                    row[MyTable.c] = "C: $idx"
-                    row[MyTable.d] = "D: $idx"
-                    row[MyTable.e] = "E: $idx"
-                }
-            }
-        )
-
-        conn.prepareStatement("select * from $MyTable").mapQuery { row ->
-            row.mapTable(MyTable)
-        }.forEach { println(it) }
-    }
-}
-
 class SQLField<Type : JdbcType<*>>(
     val name: String,
     val type: String,
@@ -58,12 +26,27 @@ abstract class SQLTable(val name: String, val schema: String? = null) {
         return if (schema != null) "${schema}.$name"
         else name
     }
+
+    abstract fun migration(handler: MigrationHandler)
 }
 
 fun SQLTable.varchar(name: String, size: Int, notNull: Boolean = false) =
     SQLField(name, "varchar($size)", JdbcType.TString).also { addField(it) }
 
-fun SQLTable.int(name: String, notNull: Boolean = false) = SQLField(name, "int", JdbcType.TInt).also { addField(it) }
+fun SQLTable.int(
+    name: String,
+    notNull: Boolean = false
+) = SQLField(name, "int", JdbcType.TInt).also { addField(it) }
+
+fun SQLTable.blob(
+    name: String,
+    notNull: Boolean = false
+) = SQLField(name, "blob", JdbcType.TBlob)
+
+fun SQLTable.long(
+    name: String,
+    notNull: Boolean = false
+) = SQLField(name, "bigint", JdbcType.TLong)
 
 sealed class JdbcType<T> {
     object TArray : JdbcType<java.sql.Array>()
@@ -80,11 +63,18 @@ sealed class JdbcType<T> {
     object TTime : JdbcType<Time>()
     object Timestamp : JdbcType<java.sql.Timestamp>()
     object TURL : JdbcType<URL>()
+    object TBlob : JdbcType<Blob>()
 }
 
 class SQLRow(private val map: HashMap<SQLField<*>, Any?> = HashMap()) {
-    operator fun <KType, T : JdbcType<KType>> get(key: SQLField<T>): KType? {
+    operator fun <KType, T : JdbcType<KType>> get(key: SQLField<T>): KType {
+        @Suppress("UNCHECKED_CAST")
+        return map[key] as KType
+    }
+
+    fun <KType, T : JdbcType<KType>> getOrNull(key: SQLField<T>): KType? {
         val value = map[key] ?: return null
+
         @Suppress("UNCHECKED_CAST")
         return value as KType
     }
@@ -125,6 +115,7 @@ fun ResultSetEnhanced.mapTable(table: SQLTable): SQLRow {
             JdbcType.TTime -> getTime(idx + 1)
             JdbcType.Timestamp -> getTimestamp(idx + 1)
             JdbcType.TURL -> getURL(idx + 1)
+            JdbcType.TBlob -> getBlob(idx + 1)
         }
     }
 
@@ -148,14 +139,6 @@ class ResultSetEnhanced(private val delegate: ResultSet) : ResultSet by delegate
 }
 
 fun ResultSet.enhance(): ResultSetEnhanced = ResultSetEnhanced(this)
-
-object MyTable : SQLTable("my_table") {
-    val a = varchar("a", 256)
-    val b = varchar("b", 256)
-    val c = varchar("c", 256)
-    val d = varchar("d", 256)
-    val e = varchar("e", 256)
-}
 
 fun SQLTable.creationScript(): String {
     val builder = StringBuilder()
@@ -203,6 +186,7 @@ fun Connection.insert(
                 JdbcType.TTime -> statement.setTime(index + 1, value as Time)
                 JdbcType.Timestamp -> statement.setTimestamp(index + 1, value as Timestamp)
                 JdbcType.TURL -> statement.setURL(index + 1, value as URL)
+                JdbcType.TBlob -> statement.setBlob(index + 1, value as Blob)
             }
         }
 

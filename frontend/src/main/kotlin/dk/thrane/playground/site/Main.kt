@@ -1,4 +1,4 @@
-package dk.thrane.playground.edu
+package dk.thrane.playground.site
 
 import kotlin.browser.document
 import dk.thrane.playground.*

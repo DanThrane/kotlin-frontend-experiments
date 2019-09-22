@@ -1,4 +1,4 @@
-package dk.thrane.playground.edu
+package dk.thrane.playground.site
 
 import dk.thrane.playground.*
 import org.w3c.dom.Element

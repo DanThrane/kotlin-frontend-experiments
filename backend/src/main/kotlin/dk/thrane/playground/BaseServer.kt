@@ -1,9 +1,6 @@
 package dk.thrane.playground
 
-import dk.thrane.playground.edu.CourseController
 import java.io.File
-import java.sql.Connection
-import java.sql.DriverManager
 import kotlin.collections.ArrayList
 
 object ConnectionController : Controller() {
@@ -132,8 +129,8 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         val message = try {
             parseMessage(ByteStreamJVM(frame)) as ObjectField
         } catch (ex: Throwable) {
-            println("Caught an exception parsing message")
-            ex.printStackTrace()
+            log.warn("Caught an exception parsing message")
+            log.warn(ex.stackTraceToString())
 
             sendWebsocketFrame(WebSocketOpCode.CONNECTION_CLOSE, ByteArray(0))
             closing = true
@@ -153,7 +150,6 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
 
             // TODO We need a unified place to set connection id and request id
             controllers@ for (controller in controllers) {
-                println("$controller and $requestName")
                 val (rpc, handler) = controller.findHandler(requestName) ?: continue
                 rpcUsedForHandling = rpc
 
@@ -214,8 +210,8 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
 
             if (!didSendPreHandler) {
                 val outgoing = EmptyRPC.outgoingResponse(
-                    connectionId!!,
-                    requestId!!,
+                    connectionId,
+                    requestId,
                     ResponseCode.NOT_FOUND,
                     BoundOutgoingMessage(EmptySchema)
                 )
@@ -248,7 +244,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
             val payload = requestMessage[rpc.request.payload]
             val authorization = requestMessage[rpc.request.authorization]
 
-            println("Handling $rpc ($requestId) with $payload")
+            log.info("$rpc requestId=$requestId payload=$payload")
             val (statusCode, response) = RPCHandlerContext(payload, authorization, socketId, rpc).handler()
             val outgoing = rpc.outgoingResponse(connectionId, requestId, statusCode, response)
 
@@ -265,6 +261,10 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
                 EmptyRPC.outgoingResponse(connectionId, requestId, statusCode, BoundOutgoingMessage(EmptySchema))
             sendMessage(outgoing.build())
         }
+    }
+
+    companion object {
+        private val log = Log("BaseServer")
     }
 }
 
@@ -322,26 +322,4 @@ abstract class Controller {
     }
 
     protected abstract fun configureController()
-}
-
-class TestServer : BaseServer() {
-    init {
-        addController(CourseController())
-    }
-}
-
-fun main(args: Array<String>) {
-    val server = TestServer()
-    val dbPool = ConnectionPool("org.h2.Driver", "jdbc:h2:mem:data;DB_CLOSE_DELAY=-1")
-
-    val migrations = MigrationHandler(dbPool)
-    migrations.addScript("test") { conn ->
-        conn.prepareStatement("create table foo(bar int);").executeUpdate()
-    }
-
-    if ("--migrate" in args || true) {
-        migrations.runMigrations()
-    }
-
-    startServer(httpRequestHandler = server, webSocketRequestHandler = server)
 }

@@ -80,7 +80,7 @@ fun startServer(
                     if (webSocketRequestHandler != null &&
                         requestHeaders.any { it.header.equals("Upgrade", true) && it.value == "websocket" }
                     ) {
-                        println("Websocket connection at $path")
+                        log.info("WS $path")
                         // The following headers are required to be present
                         val key = requestHeaders.find { it.header.equals("Sec-WebSocket-Key", true) }
                         val origin = requestHeaders.find { it.header.equals("Origin", true) }
@@ -135,7 +135,7 @@ fun startServer(
                                 }
 
                                 if (fragmentationPtr + payload.size >= fragmentationBuffer.size) {
-                                    println("Dropping connection. Packet size exceeds limit.")
+                                    log.info("Dropping connection. Packet size exceeds limit.")
                                     return true
                                 }
 
@@ -178,8 +178,8 @@ fun startServer(
                                 }
 
                                 else -> {
-                                    println("Type: $opcode")
-                                    println("Raw payload: ${payload.toList()}")
+                                    log.info("Type: $opcode")
+                                    log.info("Raw payload: ${payload.toList()}")
                                 }
                             }
                             return false
@@ -188,7 +188,7 @@ fun startServer(
                         messageLoop@ while (!client.closing) {
                             val initialByte = ins.read()
                             if (initialByte == -1) {
-                                println("No more bytes!")
+                                log.debug("No more bytes!")
                                 break
                             }
 
@@ -245,13 +245,13 @@ fun startServer(
                             }
 
                             if (handleFrame(fin, opcode, payload)) {
-                                println("just done")
+                                log.debug("just done")
                                 break@messageLoop
                             }
                         }
-                        println("Done! ${client.closing}")
+                        log.debug("Done! ${client.closing}")
                     } else {
-                        println("$method $path")
+                        log.info("$method $path")
 
                         if (httpRequestHandler != null) {
                             with(client) {

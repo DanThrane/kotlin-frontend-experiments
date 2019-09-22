@@ -10,6 +10,10 @@ data class MigrationScript(
 object MigrationTable : SQLTable("migration") {
     val index = int("index")
     val scriptName = varchar("name", 256)
+
+    override fun migration(handler: MigrationHandler) {
+        // Do nothing
+    }
 }
 
 class MigrationHandler(private val db: ConnectionPool) {

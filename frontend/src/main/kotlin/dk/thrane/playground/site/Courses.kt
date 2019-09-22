@@ -1,10 +1,10 @@
-package dk.thrane.playground.edu
+package dk.thrane.playground.site
 
 import org.w3c.dom.Element
 import dk.thrane.playground.*
-import dk.thrane.playground.edu.api.Course
-import dk.thrane.playground.edu.api.Courses
-import dk.thrane.playground.edu.api.PaginationRequest
+import dk.thrane.playground.site.api.Course
+import dk.thrane.playground.site.api.Courses
+import dk.thrane.playground.site.api.PaginationRequest
 import kotlin.browser.document
 import kotlin.browser.window
 

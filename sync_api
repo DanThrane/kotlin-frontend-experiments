@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+rm -rf frontend/src/main/kotlin/dk/thrane/playground/site/api/ 
+cp -r backend/src/main/kotlin/dk/thrane/playground/site/api/ frontend/src/main/kotlin/dk/thrane/playground/site/api/

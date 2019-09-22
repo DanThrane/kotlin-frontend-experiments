@@ -1,11 +1,17 @@
-package dk.thrane.playground.edu
+package dk.thrane.playground.site
 
 import dk.thrane.playground.*
-import dk.thrane.playground.edu.api.*
+import dk.thrane.playground.site.api.*
+import dk.thrane.playground.site.service.AuthenticationService
 
-class CourseController : Controller() {
+class CourseController(
+    private val auth: AuthenticationService
+) : Controller() {
     override fun configureController() {
         implement(Courses.list) {
+            val user = auth.validateToken(authorization)
+            log.info("User is $user")
+
             respond {
                 message[schema.items] = listOf(
                     Course("1", "Course 101"),
@@ -25,6 +31,9 @@ class CourseController : Controller() {
         }
 
         implement(Courses.view) {
+            val user = auth.validateToken(authorization)
+            log.info("User is $user")
+
             val id = request[ViewCourse.id]
 
             respond {
@@ -32,5 +41,9 @@ class CourseController : Controller() {
                 message[schema.name] = "Course Test"
             }
         }
+    }
+
+    companion object {
+        private val log = Log("CourseController")
     }
 }

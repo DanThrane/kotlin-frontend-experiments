@@ -1,4 +1,4 @@
-package dk.thrane.playground.edu.api
+package dk.thrane.playground.site.api
 
 import dk.thrane.playground.*
 
