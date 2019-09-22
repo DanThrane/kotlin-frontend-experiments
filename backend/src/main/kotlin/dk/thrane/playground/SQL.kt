@@ -18,8 +18,15 @@ abstract class SQLTable(val name: String, val schema: String? = null) {
     private val backingFields = ArrayList<SQLField<*>>()
     val fields get() = backingFields.toList()
 
-    internal fun addField(field: SQLField<*>) {
-        backingFields.add(field)
+    internal fun <K, T : JdbcType<K>> addField(
+        name: String,
+        type: String,
+        jdbcType: T,
+        notNull: Boolean
+    ): SQLField<T> {
+        val element = SQLField(name, type, jdbcType)
+        backingFields.add(element)
+        return element
     }
 
     override fun toString(): String {
@@ -31,22 +38,22 @@ abstract class SQLTable(val name: String, val schema: String? = null) {
 }
 
 fun SQLTable.varchar(name: String, size: Int, notNull: Boolean = false) =
-    SQLField(name, "varchar($size)", JdbcType.TString).also { addField(it) }
+    addField(name, "varchar($size)", JdbcType.TString, notNull)
 
 fun SQLTable.int(
     name: String,
     notNull: Boolean = false
-) = SQLField(name, "int", JdbcType.TInt).also { addField(it) }
+) = addField(name, "int", JdbcType.TInt, notNull)
 
 fun SQLTable.blob(
     name: String,
     notNull: Boolean = false
-) = SQLField(name, "blob", JdbcType.TBlob).also { addField(it) }
+) = addField(name, "blob", JdbcType.TBlob, notNull)
 
 fun SQLTable.long(
     name: String,
     notNull: Boolean = false
-) = SQLField(name, "bigint", JdbcType.TLong).also { addField(it) }
+) = addField(name, "bigint", JdbcType.TLong, notNull)
 
 sealed class JdbcType<T> {
     object TArray : JdbcType<java.sql.Array>()
