@@ -71,9 +71,13 @@ data class HashedPasswordAndSalt(val password: ByteArray, val salt: ByteArray)
 
 data class LoginResponse(val principal: Principal, val token: String)
 
+private data class CachedToken(val expiry: Long, val principal: Principal)
+
 class AuthenticationService(
     private val db: ConnectionPool
 ) {
+    private val tokenCache = HashMap<String, CachedToken>()
+
     fun createUser(
         role: PrincipalRole,
         username: String,
@@ -115,7 +119,10 @@ class AuthenticationService(
                     row[Tokens.expiry] = System.currentTimeMillis() + tokenExpiryTime
                 }))
 
-                LoginResponse(principalFromRow(principal), token)
+                val mappedPrincipal = principalFromRow(principal)
+                cacheToken(token, mappedPrincipal)
+
+                LoginResponse(mappedPrincipal, token)
             } else {
                 null
             }
@@ -133,6 +140,11 @@ class AuthenticationService(
     fun validateToken(token: String?): Principal? {
         if (token == null) return null
 
+        val cachedToken = tokenCache[token]
+        if (cachedToken != null && cachedToken.expiry < System.currentTimeMillis()) {
+            return cachedToken.principal
+        }
+
         db.useInstance { conn ->
             val row = conn
                 .prepareStatement(
@@ -149,7 +161,16 @@ class AuthenticationService(
                 .mapQuery { it.mapTable(Principals) }
                 .singleOrNull() ?: return null
 
-            return principalFromRow(row)
+            val mappedPrincipal = principalFromRow(row)
+            cacheToken(token, mappedPrincipal)
+
+            return mappedPrincipal
+        }
+    }
+
+    private fun cacheToken(token: String, mappedPrincipal: Principal) {
+        synchronized(tokenCache) {
+            tokenCache[token] = CachedToken(System.currentTimeMillis() + cacheExpiryTime, mappedPrincipal)
         }
     }
 
@@ -191,5 +212,6 @@ class AuthenticationService(
         private const val tokenLength = 64
         private const val keyLength = 256
         private const val tokenExpiryTime = 1000L * 60 * 60 * 24 * 30
+        private const val cacheExpiryTime = 1000L * 60
     }
 }
