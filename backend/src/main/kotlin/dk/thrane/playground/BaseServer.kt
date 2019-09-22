@@ -240,6 +240,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         handler: RPCHandler<Req, Res>,
         requestMessage: BoundMessage<RequestSchema<Req>>
     ) {
+        val start = System.nanoTime()
         try {
             val payload = requestMessage[rpc.request.payload]
             val authorization = requestMessage[rpc.request.authorization]
@@ -261,6 +262,9 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
                 EmptyRPC.outgoingResponse(connectionId, requestId, statusCode, BoundOutgoingMessage(EmptySchema))
             sendMessage(outgoing.build())
         }
+
+        val end = System.nanoTime()
+        log.debug("$rpc requestId=$requestId took ${end - start} nanos")
     }
 
     companion object {

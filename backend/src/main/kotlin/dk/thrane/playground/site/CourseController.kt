@@ -3,14 +3,16 @@ package dk.thrane.playground.site
 import dk.thrane.playground.*
 import dk.thrane.playground.site.api.*
 import dk.thrane.playground.site.service.AuthenticationService
+import kotlin.system.measureNanoTime
 
 class CourseController(
     private val auth: AuthenticationService
 ) : Controller() {
     override fun configureController() {
         implement(Courses.list) {
-            val user = auth.validateToken(authorization)
-            log.info("User is $user")
+            log.info("auth took: " + measureNanoTime {
+                val user = auth.validateToken(authorization)
+            })
 
             respond {
                 message[schema.items] = listOf(

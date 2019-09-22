@@ -141,7 +141,7 @@ class AuthenticationService(
         if (token == null) return null
 
         val cachedToken = tokenCache[token]
-        if (cachedToken != null && cachedToken.expiry < System.currentTimeMillis()) {
+        if (cachedToken != null && cachedToken.expiry >= System.currentTimeMillis()) {
             return cachedToken.principal
         }
 

@@ -241,7 +241,7 @@ fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
     message: BoundOutgoingMessage<Req>
 ): Promise<BoundMessage<Res>> {
     val start = window.performance.now()
-    console.log("Calling --> ${this.requestName}", message, connectionWithAuth.authorization)
+    console.log("Calling --> ${this.requestName}", message)
     val (connection, virtualConnection, auth) = connectionWithAuth
     val requestId = requestIdCounter++
     val stream = ByteOutStreamJS(Uint8Array(1024 * 64))
