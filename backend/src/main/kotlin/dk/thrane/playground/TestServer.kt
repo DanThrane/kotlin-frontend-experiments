@@ -2,6 +2,8 @@ package dk.thrane.playground
 
 import dk.thrane.playground.edu.CourseController
 import java.io.File
+import java.sql.Connection
+import java.sql.DriverManager
 import kotlin.collections.ArrayList
 
 object ConnectionController : Controller() {
@@ -328,8 +330,18 @@ class TestServer : BaseServer() {
     }
 }
 
-fun main() {
+fun main(args: Array<String>) {
     val server = TestServer()
+    val dbPool = ConnectionPool("org.h2.Driver", "jdbc:h2:mem:data;DB_CLOSE_DELAY=-1")
+
+    val migrations = MigrationHandler(dbPool)
+    migrations.addScript("test") { conn ->
+        conn.prepareStatement("create table foo(bar int);").executeUpdate()
+    }
+
+    if ("--migrate" in args || true) {
+        migrations.runMigrations()
+    }
 
     startServer(httpRequestHandler = server, webSocketRequestHandler = server)
 }

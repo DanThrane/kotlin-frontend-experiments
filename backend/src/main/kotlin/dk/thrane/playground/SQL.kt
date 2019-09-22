@@ -3,6 +3,8 @@ package dk.thrane.playground
 import java.net.URL
 import java.sql.*
 
+typealias ConnectionPool = ObjectPool<Connection>
+
 fun main() {
     val pool = ObjectPool<Connection>(
         size = 1,
@@ -41,7 +43,7 @@ class SQLField<Type : JdbcType<*>>(
     val jdbcType: Type,
     val notNull: Boolean = false
 ) {
-    override fun toString(): String = "($name: $type)"
+    override fun toString(): String = name
 }
 
 abstract class SQLTable(val name: String, val schema: String? = null) {
@@ -216,9 +218,11 @@ fun <R> PreparedStatement.mapQuery(mapper: (ResultSetEnhanced) -> R): List<R> {
 }
 
 fun <R> ResultSetEnhanced.mapToResult(mapper: (ResultSetEnhanced) -> R): List<R> {
-    val result = ArrayList<R>()
-    while (next()) {
-        result.add(mapper(this))
+    use {
+        val result = ArrayList<R>()
+        while (next()) {
+            result.add(mapper(this))
+        }
+        return result
     }
-    return result
 }

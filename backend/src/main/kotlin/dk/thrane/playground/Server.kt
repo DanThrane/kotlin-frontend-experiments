@@ -36,10 +36,11 @@ fun startServer(
     httpRequestHandler: HttpRequestHandler? = null,
     webSocketRequestHandler: WebSocketRequestHandler? = null
 ) {
+    val log = Log("Server")
     val sha1 = MessageDigest.getInstance("SHA-1")
     val websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-    println("Server is ready at ${socket.inetAddress.hostName}:${socket.localPort}")
+    log.info("Server is ready at ${socket.inetAddress.hostName}:${socket.localPort}")
     while (true) {
         val rawClient = socket.accept()
         Thread {

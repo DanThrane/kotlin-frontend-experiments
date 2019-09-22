@@ -1,8 +1,10 @@
 package dk.thrane.playground
 
 class ObjectPool<T> @PublishedApi internal constructor(
+    private val itemGenerator: () -> T,
     private val instances: Array<T>,
-    private val reset: (T) -> Unit
+    private val reset: (T) -> Unit,
+    private val isValid: (T) -> Boolean
 ) {
     private val lock = Object()
     private val instanceLocks = BooleanArray(instances.size) { false }
@@ -24,7 +26,13 @@ class ObjectPool<T> @PublishedApi internal constructor(
 
     fun returnInstance(idx: Int) {
         synchronized(lock) {
-            reset(instances[idx])
+            val instance = instances[idx]
+            if (!isValid(instance)) {
+                instances[idx] = itemGenerator()
+            } else {
+                reset(instance)
+            }
+
             instanceLocks[idx] = false
             lock.notifyAll()
         }
@@ -43,9 +51,10 @@ inline fun <T, R> ObjectPool<T>.useInstance(block: (T) -> R): R {
 inline fun <reified T> ObjectPool(
     size: Int,
     noinline itemGenerator: () -> T,
-    noinline reset: (T) -> Unit
+    noinline reset: (T) -> Unit,
+    noinline isValid: (T) -> Boolean = { true }
 ): ObjectPool<T> {
-    return ObjectPool(Array<T>(size) { itemGenerator() }, reset)
+    return ObjectPool(itemGenerator, Array(size) { itemGenerator() }, reset, isValid)
 }
 
 val defaultBufferPool by lazy { ObjectPool(512, { ByteArray(1024 * 128) }, {}) }

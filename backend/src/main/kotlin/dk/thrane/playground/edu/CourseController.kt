@@ -8,14 +8,8 @@ class CourseController : Controller() {
         implement(Courses.list) {
             respond {
                 message[schema.items] = listOf(
-                    buildOutgoing(Course) { c ->
-                        c[Course.id] = "1"
-                        c[Course.name] = "Course 101"
-                    },
-                    buildOutgoing(Course) { c ->
-                        c[Course.id] = "2"
-                        c[Course.name] = "Course 201"
-                    }
+                    Course("1", "Course 101"),
+                    Course("2", "Course 201")
                 )
 
                 message[schema.itemsPerPage] = request[PaginationRequest.itemsPerPage]
