@@ -228,9 +228,12 @@ private var requestIdCounter = 0
 fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
     pool: WSConnectionPool,
     message: BoundOutgoingMessage<Req>,
-    vc: VirtualConnection = STATELESS_CONNECTION
+    vc: VirtualConnection = STATELESS_CONNECTION,
+    auth: String? = null
 ): Promise<BoundMessage<Res>> {
-    return pool.useConnection(vc) { conn -> call(conn, message) }.then { it }
+    return pool.useConnection(vc) { conn ->
+        call(conn.copy(authorization = auth), message)
+    }.then { it }
 }
 
 fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
@@ -238,7 +241,7 @@ fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
     message: BoundOutgoingMessage<Req>
 ): Promise<BoundMessage<Res>> {
     val start = window.performance.now()
-    console.log("Calling --> ${this.requestName}", message)
+    console.log("Calling --> ${this.requestName}", message, connectionWithAuth.authorization)
     val (connection, virtualConnection, auth) = connectionWithAuth
     val requestId = requestIdCounter++
     val stream = ByteOutStreamJS(Uint8Array(1024 * 64))

@@ -2,10 +2,7 @@ package dk.thrane.playground.site
 
 import org.w3c.dom.Element
 import dk.thrane.playground.*
-import dk.thrane.playground.site.api.Course
-import dk.thrane.playground.site.api.Courses
-import dk.thrane.playground.site.api.PaginationRequest
-import kotlin.browser.document
+import dk.thrane.playground.site.api.*
 import kotlin.browser.window
 
 private val container = css {
@@ -20,7 +17,7 @@ private val coursesSurface = css {
 
 fun Element.courses() {
     Header.activePage.currentValue = SitePage.COURSES
-    val pool = WSConnectionPool("ws://${document.location!!.host}")
+    var token: String? = null
 
     div(A(klass = container)) {
         text("Courses!")
@@ -39,7 +36,7 @@ fun Element.courses() {
 
             remoteDataComponent.fetchData {
                 Courses.list.call(
-                    pool,
+                    connectionPool,
                     buildOutgoing(PaginationRequest) { msg ->
                         msg[PaginationRequest.itemsPerPage] = 25
                         msg[PaginationRequest.page] = 0
@@ -54,18 +51,26 @@ fun Element.courses() {
         flex {
             primaryButton {
                 on(Events.click) {
-                    window.alert("You clicked!")
+                    if (token == null) {
+                        Authentication.login.call(
+                            connectionPool,
+                            LoginRequest("foo", "bar")
+                        ).then { msg ->
+                            token = msg[LoginResponse.token]
+                        }
+                    } else {
+                        Courses.list.call(
+                            connectionPool,
+                            buildOutgoing(PaginationRequest) { msg ->
+                                msg[PaginationRequest.itemsPerPage] = 25
+                                msg[PaginationRequest.page] = 0
+                            },
+                            auth = token
+                        )
+                    }
                 }
 
-                text("This is a button")
-            }
-
-            outlineButton {
-                on(Events.click) {
-                    window.alert("outline!")
-                }
-
-                text("Outline!")
+                text("Send a request")
             }
         }
     }

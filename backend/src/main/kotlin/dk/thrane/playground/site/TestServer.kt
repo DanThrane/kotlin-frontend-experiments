@@ -2,6 +2,7 @@ package dk.thrane.playground.site
 
 import dk.thrane.playground.*
 import dk.thrane.playground.site.service.AuthenticationService
+import dk.thrane.playground.site.service.PrincipalRole
 import dk.thrane.playground.site.service.Principals
 import dk.thrane.playground.site.service.Tokens
 
@@ -21,6 +22,8 @@ class TestServer(args: Array<String>) : BaseServer() {
         }
 
         val authService = AuthenticationService(dbPool)
+
+        authService.createUser(PrincipalRole.ADMIN, "foo", "bar")
 
         addController(AuthenticationController(authService))
         addController(CourseController(authService))

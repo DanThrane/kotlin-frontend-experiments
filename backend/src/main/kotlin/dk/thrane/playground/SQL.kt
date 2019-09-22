@@ -41,12 +41,12 @@ fun SQLTable.int(
 fun SQLTable.blob(
     name: String,
     notNull: Boolean = false
-) = SQLField(name, "blob", JdbcType.TBlob)
+) = SQLField(name, "blob", JdbcType.TBlob).also { addField(it) }
 
 fun SQLTable.long(
     name: String,
     notNull: Boolean = false
-) = SQLField(name, "bigint", JdbcType.TLong)
+) = SQLField(name, "bigint", JdbcType.TLong).also { addField(it) }
 
 sealed class JdbcType<T> {
     object TArray : JdbcType<java.sql.Array>()

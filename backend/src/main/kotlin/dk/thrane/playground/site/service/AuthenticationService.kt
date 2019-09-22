@@ -23,8 +23,8 @@ object Principals : SQLTable("principals") {
     val username = varchar("username", 256)
     val role = varchar("role", 256)
     val password = blob("password")
-
     val salt = blob("salt")
+
     override fun migration(handler: MigrationHandler) {
         handler.addScript("principals init") { conn ->
             conn.prepareStatement(
@@ -44,10 +44,10 @@ object Principals : SQLTable("principals") {
 
 }
 object Tokens : SQLTable("tokens") {
-    val username = Principals.username
+    val username = varchar("username", 256)
     val token = varchar("token", 256)
-
     val expiry = long("expiry")
+
     override fun migration(handler: MigrationHandler) {
         handler.addScript("initial table") { conn ->
             conn.prepareStatement(
@@ -74,7 +74,11 @@ data class LoginResponse(val principal: Principal, val token: String)
 class AuthenticationService(
     private val db: ConnectionPool
 ) {
-    fun createUser(username: String, role: PrincipalRole, password: String) {
+    fun createUser(
+        role: PrincipalRole,
+        username: String,
+        password: String
+    ) {
         db.useInstance { conn ->
             val hashedPassword = hashPassword(password.toCharArray())
             conn.insert(Principals, listOf(SQLRow().also { row ->
@@ -135,7 +139,7 @@ class AuthenticationService(
                     """
                     select P.* 
                     from $Principals P join $Tokens T 
-                    where ${Tokens.token} = ? and ${Tokens.expiry} < ?
+                    where ${Tokens.token} = ? and ${Tokens.expiry} > ?
                 """.trimIndent()
                 )
                 .apply {
