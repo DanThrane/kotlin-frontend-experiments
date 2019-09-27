@@ -1,5 +1,6 @@
-package dk.thrane.playground
+package dk.thrane.playground.components
 
+import dk.thrane.playground.text
 import org.w3c.dom.Element
 
 class BoundData<T>(initialValue: T) {

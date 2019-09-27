@@ -1,5 +1,6 @@
-package dk.thrane.playground
+package dk.thrane.playground.components
 
+import dk.thrane.playground.*
 import org.w3c.dom.Element
 import kotlin.browser.window
 import kotlin.js.Date
@@ -59,7 +60,15 @@ fun Element.toasts() {
     var nextDeadline = 0.0
     val queue = ArrayList<Toast>()
 
-    flex(A(classes = setOf(AlignItems.center, JustifyContent.center, toastStyle))) {
+    flex(
+        A(
+            classes = setOf(
+                AlignItems.center,
+                JustifyContent.center,
+                toastStyle
+            )
+        )
+    ) {
         boundClass(activeToast) { if (it == null) emptySet() else setOf(TOAST_ACTIVE) }
 
         val subscription = Toasts.subscribe { queue.add(it) }

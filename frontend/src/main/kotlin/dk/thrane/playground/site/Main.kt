@@ -2,6 +2,7 @@ package dk.thrane.playground.site
 
 import kotlin.browser.document
 import dk.thrane.playground.*
+import dk.thrane.playground.components.*
 
 private val globalTheme = css {
     margin = 0.px
@@ -67,7 +68,13 @@ fun main() {
                         Header.activePage.currentValue = SitePage.CALENDAR
                         text("Calendar")
                         repeat(10) {
-                            Toasts.push(Toast(ToastType.INFO, "This is a test $it", 1000L))
+                            Toasts.push(
+                                Toast(
+                                    ToastType.INFO,
+                                    "This is a test $it",
+                                    1000L
+                                )
+                            )
                         }
                     }
                 )

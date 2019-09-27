@@ -1,4 +1,6 @@
-package dk.thrane.playground
+package dk.thrane.playground.components
+
+import dk.thrane.playground.*
 
 /*! minireset.css v0.0.5 | MIT License | github.com/jgthms/minireset.css */
 

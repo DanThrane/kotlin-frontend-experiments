@@ -1,5 +1,6 @@
-package dk.thrane.playground
+package dk.thrane.playground.components
 
+import dk.thrane.playground.*
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLAnchorElement
 import org.w3c.dom.HTMLDivElement
@@ -77,7 +78,13 @@ object Router {
     }
 
     fun route(route: RouteBuilder.() -> Unit, children: Element.() -> Unit) {
-        routes.add(RouteWithGenerator(RouteBuilder().also(route).build(), children))
+        routes.add(
+            RouteWithGenerator(
+                RouteBuilder().also(
+                    route
+                ).build(), children
+            )
+        )
     }
 
     private fun Element.initializePopStateListener() {
