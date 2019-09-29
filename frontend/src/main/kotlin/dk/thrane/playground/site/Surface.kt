@@ -8,12 +8,15 @@ import dk.thrane.playground.*
 
 private val elevations = (1..10).map { elevation ->
     css {
-        backgroundColor = Theme.surface.toString()
-        color = Theme.onSurface.toString()
         boxShadow = boxShadow(1, 1, elevation + 5, 0, "rgba(0, 0, 0, 0.25)")
-        padding = 16.px
-        borderRadius = 3.px
     }
+}
+
+private val style = css {
+    backgroundColor = Theme.surface.toString()
+    color = Theme.onSurface.toString()
+    padding = 16.px
+    borderRadius = 3.px
 }
 
 fun Element.surface(
@@ -22,7 +25,7 @@ fun Element.surface(
     children: HTMLDivElement.() -> Unit
 ) {
     div(
-        attrs.copy(classes = attrs.classes + elevations[max(0, min(elevation, elevations.size))]),
+        attrs.withClasses(style, elevations[max(0, min(elevation, elevations.size))]),
         children
     )
 }

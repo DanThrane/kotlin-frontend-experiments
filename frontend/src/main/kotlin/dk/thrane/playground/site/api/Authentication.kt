@@ -1,13 +1,11 @@
 package dk.thrane.playground.site.api
 
-import dk.thrane.playground.EmptySchema
-import dk.thrane.playground.MessageSchema
-import dk.thrane.playground.RPCNamespace
-import dk.thrane.playground.buildOutgoing
+import dk.thrane.playground.*
 
 object Authentication : RPCNamespace("authentication") {
     val login by call(LoginRequest, LoginResponse)
     val logout by call(LogoutRequest, EmptySchema)
+    val whoami by call(EmptySchema, PrincipalSchema)
 }
 
 object LoginRequest : MessageSchema<LoginRequest>() {
@@ -36,3 +34,27 @@ fun LogoutRequest(token: String) = buildOutgoing(LogoutRequest) { msg ->
     msg[LogoutRequest.token] = token
 }
 
+object PrincipalSchema : MessageSchema<PrincipalSchema>() {
+    val username = string(0)
+    val role = string(1)
+}
+
+fun PrincipalSchema(username: String, role: String) = buildOutgoing(PrincipalSchema) { msg ->
+    msg[PrincipalSchema.username] = username
+    msg[PrincipalSchema.role] = role
+}
+
+fun BoundMessage<PrincipalSchema>.toModel() = Principal(
+    this[PrincipalSchema.username],
+    PrincipalRole.valueOf(this[PrincipalSchema.role])
+)
+
+enum class PrincipalRole {
+    USER,
+    ADMIN
+}
+
+data class Principal(
+    val username: String,
+    val role: PrincipalRole
+)

@@ -102,6 +102,18 @@ inline fun Element.input(
     )
 }
 
+inline fun Element.label(
+    attrs: CommonAttributes<HTMLLabelElement> = CommonAttributes(),
+    children: (HTMLLabelElement.() -> Unit) = {}
+) {
+    baseElement("label", attrs, children)
+}
+
+inline fun Element.br(
+    attrs: CommonAttributes<HTMLFormElement> = CommonAttributes()
+) {
+    baseElement("br", attrs)
+}
 enum class WrapType {
     soft,
     hard

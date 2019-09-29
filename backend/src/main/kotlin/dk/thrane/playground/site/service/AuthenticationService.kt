@@ -1,6 +1,8 @@
 package dk.thrane.playground.site.service
 
 import dk.thrane.playground.*
+import dk.thrane.playground.site.api.Principal
+import dk.thrane.playground.site.api.PrincipalRole
 import java.security.NoSuchAlgorithmException
 import java.security.SecureRandom
 import java.security.spec.InvalidKeySpecException
@@ -8,16 +10,6 @@ import java.util.*
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 import javax.sql.rowset.serial.SerialBlob
-
-enum class PrincipalRole {
-    USER,
-    ADMIN
-}
-
-data class Principal(
-    val username: String,
-    val role: PrincipalRole
-)
 
 object Principals : SQLTable("principals") {
     val username = varchar("username", 256)

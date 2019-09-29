@@ -1,8 +1,8 @@
 package dk.thrane.playground.site
 
 import dk.thrane.playground.*
+import dk.thrane.playground.site.api.PrincipalRole
 import dk.thrane.playground.site.service.AuthenticationService
-import dk.thrane.playground.site.service.PrincipalRole
 import dk.thrane.playground.site.service.Principals
 import dk.thrane.playground.site.service.Tokens
 

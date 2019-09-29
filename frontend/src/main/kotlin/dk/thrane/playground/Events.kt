@@ -7,4 +7,5 @@ object Events {
     val message = "message"
     val focus = "focus"
     val blur = "blur"
+    val submit = "submit"
 }

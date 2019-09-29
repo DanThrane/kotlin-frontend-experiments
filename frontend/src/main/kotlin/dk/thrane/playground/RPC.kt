@@ -67,6 +67,8 @@ object EmptySchema : MessageSchema<EmptySchema>() {
 val EmptyRequestSchema = RequestSchema(EmptySchema)
 val EmptyResponseSchema = ResponseSchema(EmptySchema)
 
+fun EmptyOutgoingMessage() = buildOutgoing(EmptySchema) {}
+
 object OpenConnectionSchema : MessageSchema<OpenConnectionSchema>() {
     val id = int(0)
 }

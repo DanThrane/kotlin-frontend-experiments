@@ -25,7 +25,6 @@ private val style = css {
     (byTag("a")) {
         color = Theme.onPrimary.toString()
         textDecoration = "none"
-        marginRight = 20.px
         outline = "0"
     }
 
@@ -49,6 +48,14 @@ private val style = css {
 
     (byTag("a").withPseudoClass("hover").withPseudoElement("before")) {
         opacity = "1"
+    }
+
+    (byClass("spacer")) {
+        flexGrow = "1"
+    }
+
+    (matchSelf().directChild(matchAny())) {
+        marginRight = 20.px
     }
 }
 
@@ -84,5 +91,9 @@ fun Element.header() {
             boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == SitePage.CALENDAR }
             text("Calendar")
         }
+
+        div(A(klass = "spacer"))
+
+        headerLogin()
     }
 }

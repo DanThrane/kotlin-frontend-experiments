@@ -12,6 +12,7 @@ class LoadingState {
 
 fun Element.loading(state: LoadingState = LoadingState(), children: Element.() -> Unit): LoadingState {
     cardStack(
+        MultiBind(state.loading, state.error),
         CardInStack(
             predicate = { state.error.currentValue != null },
             card = { text("An error! ${state.error.currentValue}") }
@@ -25,9 +26,7 @@ fun Element.loading(state: LoadingState = LoadingState(), children: Element.() -
         CardInStack(
             predicate = { true },
             card = children
-        ),
-
-        dependencies = listOf(state.loading, state.error)
+        )
     )
 
     return state

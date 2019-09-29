@@ -4,10 +4,7 @@ import dk.thrane.playground.Controller
 import dk.thrane.playground.RPCException
 import dk.thrane.playground.ResponseCode
 import dk.thrane.playground.respond
-import dk.thrane.playground.site.api.Authentication
-import dk.thrane.playground.site.api.LoginRequest
-import dk.thrane.playground.site.api.LoginResponse
-import dk.thrane.playground.site.api.LogoutRequest
+import dk.thrane.playground.site.api.*
 import dk.thrane.playground.site.service.AuthenticationService
 
 class AuthenticationController(
@@ -26,6 +23,12 @@ class AuthenticationController(
         implement(Authentication.logout) {
             authenticationService.logout(request[LogoutRequest.token])
             respond {}
+        }
+
+        implement(Authentication.whoami) {
+            val principal = authenticationService.validateToken(authorization) ?:
+                throw RPCException(ResponseCode.UNAUTHORIZED, "Not authenticated with service.")
+            Pair(ResponseCode.OK, PrincipalSchema(principal.username, principal.role.name))
         }
     }
 }
