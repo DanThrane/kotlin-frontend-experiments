@@ -2,20 +2,17 @@ package dk.thrane.playground.site
 
 import dk.thrane.playground.*
 import dk.thrane.playground.site.api.PrincipalRole
-import dk.thrane.playground.site.service.AuthenticationService
-import dk.thrane.playground.site.service.Principals
-import dk.thrane.playground.site.service.Tokens
+import dk.thrane.playground.site.service.*
 
 class TestServer(args: Array<String>) : BaseServer() {
     init {
-        val dbPool = ConnectionPool("org.h2.Driver", "jdbc:h2:mem:data;DB_CLOSE_DELAY=-1")
+        val dbPool = DBConnectionPool("org.h2.Driver", "jdbc:h2:mem:data;DB_CLOSE_DELAY=-1")
 
         val migrations = MigrationHandler(dbPool)
-        migrations.addScript("test") { conn ->
-            conn.prepareStatement("create table foo(bar int);").executeUpdate()
-        }
         Principals.migration(migrations)
         Tokens.migration(migrations)
+        SnackerTags.migration(migrations)
+        SnackerFollowers.migration(migrations)
 
         if ("--migrate" in args || true) {
             migrations.runMigrations()
@@ -26,7 +23,6 @@ class TestServer(args: Array<String>) : BaseServer() {
         authService.createUser(PrincipalRole.ADMIN, "foo", "bar")
 
         addController(AuthenticationController(authService))
-        addController(CourseController(authService))
     }
 }
 

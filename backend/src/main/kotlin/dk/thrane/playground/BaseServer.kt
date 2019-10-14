@@ -246,7 +246,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
             val authorization = requestMessage[rpc.request.authorization]
 
             log.info("$rpc requestId=$requestId payload=$payload")
-            val (statusCode, response) = RPCHandlerContext(payload, authorization, socketId, rpc).handler()
+            val (statusCode, response) = RPCHandlerContextImpl(payload, authorization, socketId, rpc).handler()
             val outgoing = rpc.outgoingResponse(connectionId, requestId, statusCode, response)
 
             sendMessage(outgoing.build())
@@ -277,12 +277,19 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
  */
 private val EmptyRPC = RPC("~empty~", "~empty~", EmptySchema, EmptySchema)
 
-class RPCHandlerContext<Req : MessageSchema<Req>, Res : MessageSchema<Res>>(
-    val request: BoundMessage<Req>,
-    val authorization: String?,
-    val socketId: String,
+interface RPCHandlerContext<Req : MessageSchema<Req>, Res : MessageSchema<Res>> {
+    val request: BoundMessage<Req>
+    val authorization: String?
+    val socketId: String
     val rpc: RPC<Req, Res>
-)
+}
+
+class RPCHandlerContextImpl<Req : MessageSchema<Req>, Res : MessageSchema<Res>>(
+    override val request: BoundMessage<Req>,
+    override val authorization: String?,
+    override val socketId: String,
+    override val rpc: RPC<Req, Res>
+) : RPCHandlerContext<Req, Res>
 
 class RespondingContext<Res : MessageSchema<Res>>(
     val schema: Res,
@@ -326,4 +333,28 @@ abstract class Controller {
     }
 
     protected abstract fun configureController()
+}
+
+data class MappedRPCHandlerContext<Req : MessageSchema<Req>, Res : MessageSchema<Res>, Mapped : OutgoingConverter<Req>>(
+    val mappedRequest: Mapped,
+    private val delegate: RPCHandlerContext<Req, Res>
+) : RPCHandlerContext<Req, Res> by delegate
+
+fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>, Mapped : OutgoingConverter<Req>> Controller.implement(
+    rpc: RPC<Req, Res>,
+    converter: IngoingConverter<Mapped, Req>,
+    handler: MappedRPCHandlerContext<Req, Res, Mapped>.() -> Pair<ResponseCode, BoundOutgoingMessage<Res>>
+) {
+    implement(rpc) {
+        MappedRPCHandlerContext(converter.fromIngoing(request), this).handler()
+    }
+}
+
+
+fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>,
+        Mapped : OutgoingConverter<Res>> RPCHandlerContext<Req, Res>.respond(
+    value: Mapped,
+    code: ResponseCode = ResponseCode.OK
+): Pair<ResponseCode, BoundOutgoingMessage<Res>> {
+    return Pair(code, value.toOutgoing())
 }
