@@ -3,7 +3,7 @@ package dk.thrane.playground
 import java.net.URL
 import java.sql.*
 
-typealias ConnectionPool = ObjectPool<Connection>
+typealias DBConnectionPool = ObjectPool<Connection>
 
 class SQLField<Type : JdbcType<*>>(
     val name: String,
@@ -202,6 +202,211 @@ fun Connection.insert(
     }
 
     return statement.executeBatch()
+}
+
+fun Connection.statement(statement: String): EnhancedPreparedStatement =
+    EnhancedPreparedStatement(this, statement)
+
+fun Connection.statement(statement: String, block: EnhancedPreparedStatement.() -> Unit): PreparedStatement =
+    EnhancedPreparedStatement(this, statement).apply(block).toPreparedStatement()
+
+fun Connection.statement(statement: String, parameters: Map<String, Any?>): PreparedStatement =
+    EnhancedPreparedStatement(this, statement).apply {
+        for ((k, v) in parameters)  {
+            when (v) {
+                null -> {
+                    setParameterAsNull(k)
+                }
+
+                is String -> setParameter(k, v)
+                is Boolean -> setParameter(k, v)
+                is Byte -> setParameter(k, v)
+                is Short -> setParameter(k, v)
+                is Int -> setParameter(k, v)
+                is Long -> setParameter(k, v)
+                is Float -> setParameter(k, v)
+                is Double -> setParameter(k, v)
+                is ByteArray -> setParameter(k, v)
+                is Date -> setParameter(k, v)
+                is Time -> setParameter(k, v)
+                is Timestamp -> setParameter(k, v)
+                is URL -> setParameter(k, v)
+                is Blob -> setParameter(k, v)
+                else -> throw IllegalArgumentException("Unknown type for '$k'. Received: $v")
+            }
+        }
+    }.toPreparedStatement()
+
+class EnhancedPreparedStatement(
+    connection: Connection,
+    statement: String
+) {
+    private val parameterNamesToIndex: Map<String, List<Int>>
+    private val preparedStatement: PreparedStatement
+    private val boundValues = HashSet<String>()
+
+    init {
+        val parameterNamesToIndex = HashMap<String, List<Int>>()
+
+        val queryBuilder = StringBuilder()
+        var parameterIndex = 1 // Parameters start at 1
+        var stringIndex = 0
+        while (stringIndex < statement.length) {
+            val nextParameter = statement.indexOf('?', stringIndex)
+            if (nextParameter == -1) {
+                queryBuilder.append(statement.substring(stringIndex))
+                break
+            }
+
+            queryBuilder.append(statement.substring(stringIndex, nextParameter + 1)) // include '?'
+            queryBuilder.append(' ')
+
+            val endOfParameterName = statement.indexOf(' ', nextParameter + 1).takeIf { it != -1 } ?: statement.length
+            val parameterName = statement.substring(nextParameter + 1, endOfParameterName)
+            stringIndex = endOfParameterName + 1
+
+            parameterNamesToIndex[parameterName] =
+                (parameterNamesToIndex[parameterName] ?: emptyList()) + listOf(parameterIndex)
+
+            parameterIndex++
+        }
+
+        this.parameterNamesToIndex = parameterNamesToIndex
+        this.preparedStatement = connection.prepareStatement(queryBuilder.toString())
+    }
+
+    fun setParameterAsNull(name: String) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setObject(index, null)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: String) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setString(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Boolean) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setBoolean(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Byte) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setByte(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Short) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setShort(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Int) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setInt(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Long) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setLong(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Float) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setFloat(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Double) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setDouble(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: ByteArray) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setBytes(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Date) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setDate(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Time) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setTime(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Timestamp) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setTimestamp(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: URL) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setURL(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun setParameter(name: String, value: Blob) {
+        val indices = parameterNamesToIndex[name] ?: throw IllegalArgumentException("Unknown parameter '$name'")
+        for (index in indices) {
+            preparedStatement.setBlob(index, value)
+        }
+        boundValues.add(name)
+    }
+
+    fun toPreparedStatement(allowUnboundValues: Boolean = false): PreparedStatement {
+        if (allowUnboundValues) return preparedStatement
+
+        check(boundValues == parameterNamesToIndex.keys) {
+            "This prepared statement has unbound values!\n" +
+            "Statement: $preparedStatement\n" +
+            "Missing values: ${parameterNamesToIndex.keys - boundValues}\n" +
+            "Given values: $boundValues"
+        }
+
+        return preparedStatement
+    }
 }
 
 fun <R> PreparedStatement.mapQuery(mapper: (ResultSetEnhanced) -> R): List<R> {

@@ -16,7 +16,7 @@ object MigrationTable : SQLTable("migration") {
     }
 }
 
-class MigrationHandler(private val db: ConnectionPool) {
+class MigrationHandler(private val db: DBConnectionPool) {
     private val migrations = ArrayList<MigrationScript>()
 
     fun addScript(name: String, script: (Connection) -> Unit) {

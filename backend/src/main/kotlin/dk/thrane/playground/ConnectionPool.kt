@@ -3,7 +3,7 @@ package dk.thrane.playground
 import java.sql.Connection
 import java.sql.DriverManager
 
-fun ConnectionPool(
+fun DBConnectionPool(
     driver: String,
     url: String,
     user: String = "",

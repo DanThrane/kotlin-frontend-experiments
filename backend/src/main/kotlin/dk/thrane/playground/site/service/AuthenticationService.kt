@@ -33,8 +33,8 @@ object Principals : SQLTable("principals") {
             ).executeUpdate()
         }
     }
-
 }
+
 object Tokens : SQLTable("tokens") {
     val username = varchar("username", 256)
     val token = varchar("token", 256)
@@ -66,7 +66,7 @@ data class LoginResponse(val principal: Principal, val token: String)
 private data class CachedToken(val expiry: Long, val principal: Principal)
 
 class AuthenticationService(
-    private val db: ConnectionPool
+    private val db: DBConnectionPool
 ) {
     private val tokenCache = HashMap<String, CachedToken>()
 
@@ -180,7 +180,8 @@ class AuthenticationService(
     private fun hashPassword(password: CharArray, salt: ByteArray = genSalt()): HashedPasswordAndSalt {
         try {
             val skf = SecretKeyFactory.getInstance(keyFactory)
-            val spec = PBEKeySpec(password, salt,
+            val spec = PBEKeySpec(
+                password, salt,
                 iterations,
                 keyLength
             )
@@ -206,4 +207,16 @@ class AuthenticationService(
         private const val tokenExpiryTime = 1000L * 60 * 60 * 24 * 30
         private const val cacheExpiryTime = 1000L * 60
     }
+}
+
+fun AuthenticationService.verifyUser(
+    token: String?,
+    validRoles: Set<PrincipalRole> = setOf(PrincipalRole.USER, PrincipalRole.ADMIN)
+): Principal {
+    val capturedToken = token ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
+    val principal = validateToken(capturedToken) ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
+    if (principal.role !in validRoles) {
+        throw RPCException(ResponseCode.FORBIDDEN, "Forbidden")
+    }
+    return principal
 }
