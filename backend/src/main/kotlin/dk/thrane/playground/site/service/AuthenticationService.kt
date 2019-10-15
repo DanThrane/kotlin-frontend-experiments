@@ -142,8 +142,11 @@ class AuthenticationService(
                 .prepareStatement(
                     """
                     select P.* 
-                    from $Principals P join $Tokens T 
-                    where ${Tokens.token} = ? and ${Tokens.expiry} > ?
+                    from $Principals P, $Tokens T 
+                    where 
+                        P.${Principals.username} = T.${Tokens.username} and
+                        ${Tokens.token} = ? and 
+                        ${Tokens.expiry} > ?
                 """.trimIndent()
                 )
                 .apply {
