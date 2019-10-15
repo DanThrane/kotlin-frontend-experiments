@@ -44,38 +44,18 @@ fun main() {
                 route(
                     route = {},
                     children = {
-                        Header.activePage.currentValue = SitePage.HOME
                         text("Root")
                     }
                 )
 
                 route(
                     route = {
-                        +"courses"
+                        +"profile"
+                        +RouteSegment.Variable("name")
                     },
 
-                    children = {
-                        courses()
-                    }
-                )
-
-                route(
-                    route = {
-                        +"calendar"
-                    },
-
-                    children = {
-                        Header.activePage.currentValue = SitePage.CALENDAR
-                        text("Calendar")
-                        repeat(10) {
-                            Toasts.push(
-                                Toast(
-                                    ToastType.INFO,
-                                    "This is a test $it",
-                                    1000L
-                                )
-                            )
-                        }
+                    children = { vars ->
+                        profile(vars.getValue("name"))
                     }
                 )
             }

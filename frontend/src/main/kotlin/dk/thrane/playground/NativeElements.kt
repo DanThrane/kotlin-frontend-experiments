@@ -170,3 +170,10 @@ inline fun Element.button(
         children
     )
 }
+
+inline fun Element.span(
+    attrs: CommonAttributes<HTMLSpanElement> = CommonAttributes(),
+    children: (HTMLSpanElement.() -> Unit) = {}
+) {
+    baseElement("span", attrs, children)
+}
