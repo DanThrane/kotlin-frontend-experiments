@@ -59,37 +59,14 @@ private val style = css {
     }
 }
 
-enum class SitePage {
-    HOME,
-    COURSES,
-    CALENDAR
-}
-
-object Header {
-    val activePage = BoundData(SitePage.HOME)
-}
+object Header
 
 fun Element.header() {
     div(A(klass = style)) {
         h1 {
             routeLink(href = "/") {
-                text("Board")
+                text("\uD83C\uDF5F\uD83D\uDCAC")
             }
-        }
-
-        routeLink(href = "/") {
-            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == SitePage.HOME }
-            text("Home")
-        }
-
-        routeLink(href = "/courses") {
-            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == SitePage.COURSES }
-            text("Courses")
-        }
-
-        routeLink(href = "/calendar") {
-            boundClassByPredicate(Header.activePage, ACTIVE_PAGE_CLASS) { it == SitePage.CALENDAR }
-            text("Calendar")
         }
 
         div(A(klass = "spacer"))

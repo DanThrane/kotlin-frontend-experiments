@@ -23,11 +23,12 @@ inline fun Element.routeLink(
 }
 
 object Router {
-    data class RouteWithGenerator(val route: Route, val generator: Element.() -> Unit)
+    data class RouteWithGenerator(val route: Route, val generator: Element.(segments: Map<String, String>) -> Unit)
+
     private val routes = ArrayList<RouteWithGenerator>()
     private lateinit var rootNode: Element
     private lateinit var currentRouteNode: Element
-    private var notFoundRoute: Element.() -> Unit = {
+    private var notFoundRoute: Element.(segments: Map<String, String>) -> Unit = {
         div { text("Not found") }
     }
 
@@ -53,6 +54,7 @@ object Router {
         val path = window.location.pathname
         val segments = path.split("/").filter { it.isNotEmpty() }
 
+        val variables = HashMap<String, String>()
         var eligibleRoutes: List<RouteWithGenerator> = routes.filter { it.route.segments.size <= segments.size }
         segments.forEachIndexed { index, segment ->
             eligibleRoutes = eligibleRoutes.filter { (route, _) ->
@@ -61,6 +63,10 @@ object Router {
 
                 when (routeSegment) {
                     is RouteSegment.Plain -> routeSegment.segment == segment
+                    is RouteSegment.Variable -> {
+                        variables[routeSegment.name] = segment
+                        true
+                    }
                     RouteSegment.Remaining -> true
                     RouteSegment.Wildcard -> true
                 }
@@ -74,15 +80,16 @@ object Router {
 
         val generator = eligibleRoutes.firstOrNull()?.generator ?: notFoundRoute
         deleteNode(currentRouteNode)
-        mountRouteNode().generator()
+        mountRouteNode().generator(variables)
     }
 
-    fun route(route: RouteBuilder.() -> Unit, children: Element.() -> Unit) {
+    fun route(route: RouteBuilder.() -> Unit, children: Element.(segments: Map<String, String>) -> Unit) {
         routes.add(
             RouteWithGenerator(
                 RouteBuilder().also(
                     route
-                ).build(), children
+                ).build(),
+                children
             )
         )
     }
@@ -110,6 +117,7 @@ data class Route(val segments: List<RouteSegment>)
 
 sealed class RouteSegment {
     data class Plain(val segment: String) : RouteSegment()
+    data class Variable(val name: String) : RouteSegment()
     object Remaining : RouteSegment()
     object Wildcard : RouteSegment()
 }
@@ -120,12 +128,8 @@ class RouteBuilder {
         segments.add(RouteSegment.Plain(this))
     }
 
-    fun remaining() {
-        segments.add(RouteSegment.Remaining)
-    }
-
-    fun wildcard() {
-        segments.add(RouteSegment.Wildcard)
+    operator fun RouteSegment.unaryPlus() {
+        segments.add(this)
     }
 
     fun build(): Route {
