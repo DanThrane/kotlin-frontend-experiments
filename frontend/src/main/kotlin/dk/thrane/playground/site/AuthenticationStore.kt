@@ -5,7 +5,6 @@ import dk.thrane.playground.call
 import dk.thrane.playground.components.BoundData
 import dk.thrane.playground.components.LocalStorage
 import dk.thrane.playground.site.api.*
-import dk.thrane.playground.useConnection
 
 object AuthenticationStore {
     private val mutableToken = BoundData<String?>(null)

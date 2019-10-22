@@ -19,13 +19,22 @@ private val style = css {
     borderRadius = 3.px
 }
 
+private val verticalSpacingStyle = css {
+    marginBottom = 8.px
+}
+
 fun Element.surface(
     attrs: CommonAttributes<HTMLDivElement> = CommonAttributes(),
     elevation: Int = 1,
+    verticalSpacing: Boolean = true,
     children: HTMLDivElement.() -> Unit
 ) {
     div(
-        attrs.withClasses(style, elevations[max(0, min(elevation, elevations.size))]),
+        attrs.withClasses(
+            style,
+            elevations[max(0, min(elevation, elevations.size))],
+            if (verticalSpacing) verticalSpacingStyle else ""
+        ),
         children
     )
 }

@@ -113,6 +113,8 @@ var CSSPropertyListBuilder.borderCollapse: String by CSSDelegate()
 var CSSPropertyListBuilder.borderSpacing: String by CSSDelegate()
 var CSSPropertyListBuilder.textAlign: String by CSSDelegate()
 var CSSPropertyListBuilder.boxShadow: String by CSSDelegate()
+var CSSPropertyListBuilder.userSelect: String by CSSDelegate()
+var CSSPropertyListBuilder.textTransform: String by CSSDelegate()
 
 class CSSDelegate(val name: String? = null) {
     operator fun getValue(thisRef: Any?, property: KProperty<*>): String {

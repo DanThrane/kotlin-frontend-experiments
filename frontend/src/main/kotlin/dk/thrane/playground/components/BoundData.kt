@@ -63,6 +63,16 @@ class BoundData<T>(initialValue: T) : MutableBoundData<T> {
     }
 }
 
+class StaticData<T>(override val currentValue: T) : ImmutableBoundData<T> {
+    override fun addHandler(handler: (T) -> Unit): (T) -> Unit {
+        handler(currentValue)
+        return handler
+    }
+
+    override fun removeHandler(handler: (T) -> Unit) {
+    }
+}
+
 fun <Data> Element.boundText(
     data: ImmutableBoundData<Data>,
     template: (Data) -> String
