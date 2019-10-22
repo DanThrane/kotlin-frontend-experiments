@@ -16,7 +16,7 @@ private val globalTheme = css {
 private val rootContainer = css {
     display = "flex"
     flexDirection = "column"
-    height = 100.vh
+    minHeight = 100.vh
 }
 
 private val contentContainer = css {
@@ -55,7 +55,7 @@ fun main() {
                     },
 
                     children = { vars ->
-                        profile(vars.getValue("name"))
+                        profile(StaticData(vars.getValue("name")))
                     }
                 )
             }

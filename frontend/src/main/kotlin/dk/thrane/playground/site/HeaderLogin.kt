@@ -7,7 +7,7 @@ import org.w3c.dom.HTMLInputElement
 
 private val dropdownStyle = css {
     position = "relative"
-    left = (-60).percent
+    left = (-80).percent
 }
 
 private val formStyle = css {
@@ -17,7 +17,7 @@ private val formStyle = css {
 }
 
 private val innerStyle = css {
-    position = "absolute"
+    position = "fixed"
     display = "inline-block"
 }
 
@@ -27,6 +27,7 @@ fun Element.headerLogin() {
     val password = Reference<HTMLInputElement>()
 
     div {
+        /*
         outlineButton {
             on(Events.click) {
                 isHidden.currentValue = !isHidden.currentValue
@@ -35,6 +36,13 @@ fun Element.headerLogin() {
             text("Hello, ")
             boundText(AuthenticationStore.principal) { principal ->
                 principal?.username ?: "Guest"
+            }
+        }
+         */
+
+        avatar(AuthenticationStore.principal, { it?.username ?: "Guest" }) {
+            on(Events.click) {
+                isHidden.currentValue = !isHidden.currentValue
             }
         }
 

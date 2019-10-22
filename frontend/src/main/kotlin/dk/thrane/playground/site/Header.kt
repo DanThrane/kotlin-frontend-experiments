@@ -9,7 +9,7 @@ import dk.thrane.playground.components.routeLink
 private const val ACTIVE_PAGE_CLASS = "active"
 
 private val style = css {
-    height = 80.px
+    height = 64.px
     backgroundColor = Theme.primary.base.toString()
     color = Theme.onPrimary.toString()
     paddingLeft = 16.px

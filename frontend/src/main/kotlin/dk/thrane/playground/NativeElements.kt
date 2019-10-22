@@ -177,3 +177,23 @@ inline fun Element.span(
 ) {
     baseElement("span", attrs, children)
 }
+
+inline fun Element.video(
+    attrs: CommonAttributes<HTMLVideoElement> = CommonAttributes(),
+    src: String? = null,
+    autoplay: Boolean? = null,
+    showControls: Boolean? = null,
+    children: (HTMLVideoElement.() -> Unit) = {}
+) {
+    baseElement(
+        "video",
+        attrs.mergeWith(
+            mapOf(
+                "src" to src,
+                "autoplay" to if (autoplay == true) "" else null,
+                "controls" to showControls
+            )
+        ),
+        children
+    )
+}
