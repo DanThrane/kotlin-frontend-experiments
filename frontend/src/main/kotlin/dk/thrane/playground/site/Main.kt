@@ -9,7 +9,7 @@ private val globalTheme = css {
     padding = 0.px
 
     (matchAny()) {
-        fontFamily = "'Roboto', sans-serif"
+        fontFamily = "'Poppins', sans-serif"
     }
 }
 
@@ -17,19 +17,16 @@ private val rootContainer = css {
     display = "flex"
     flexDirection = "column"
     minHeight = 100.vh
-}
 
-private val contentContainer = css {
-    backgroundColor = Theme.background.toString()
-    color = Theme.onBackground.toString()
-    flexGrow = "10"
-    flexShrink = "1"
-    flexBasis = "auto"
-    height = 100.percent
+    backgroundColor = Theme.backgroundColor.toString()
+
+    (matchAny()) {
+        color = Theme.primaryTextColor.toString()
+    }
 }
 
 fun main() {
-    rawCSS("@import url('https://fonts.googleapis.com/css?family=Roboto:400,500&display=swap');")
+    rawCSS("@import url('https://fonts.googleapis.com/css?family=Poppins&display=swap');")
 
     val body = document.body!!
     body.classList.add(reset)
@@ -37,28 +34,28 @@ fun main() {
 
     body.div(A(klass = rootContainer)) {
         toasts()
-        header()
 
-        div(A(klass = contentContainer)) {
-            router {
-                route(
-                    route = {},
-                    children = {
-                        text("Root")
-                    }
-                )
+        router {
+            route(
+                route = { },
 
-                route(
-                    route = {
-                        +"profile"
-                        +RouteSegment.Variable("name")
-                    },
+                children = {
+                    text("Root")
+                }
+            )
 
-                    children = { vars ->
-                        profile(StaticData(vars.getValue("name")))
-                    }
-                )
-            }
+            route(
+                route = { +"login" },
+                children = { loginPage() }
+            )
+
+            route(
+                route = { +"overview" },
+                children = {
+                    header()
+                    overviewPage()
+                }
+            )
         }
     }
 }

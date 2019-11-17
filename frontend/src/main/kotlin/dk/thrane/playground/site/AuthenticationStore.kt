@@ -5,6 +5,7 @@ import dk.thrane.playground.call
 import dk.thrane.playground.components.BoundData
 import dk.thrane.playground.components.LocalStorage
 import dk.thrane.playground.site.api.*
+import kotlin.js.Promise
 
 object AuthenticationStore {
     private val mutableToken = BoundData<String?>(null)
@@ -25,16 +26,18 @@ object AuthenticationStore {
         }
     }
 
-    fun logout() {
+    fun logout(): Promise<Unit> {
         val capturedToken = token.currentValue
         if (capturedToken != null) {
-            Authentication.logout.call(
+            return Authentication.logout.call(
                 connectionPool,
                 LogoutRequest(capturedToken)
             ).then {
                 mutableToken.currentValue = null
             }
         }
+
+        return Promise.resolve(Unit)
     }
 
     init {

@@ -16,9 +16,9 @@ private val style = css {
     userSelect = "none"
     cursor = "pointer"
     padding = 6.px
-    backgroundColor = Theme.secondary.c60.toString()
     textTransform = "uppercase"
     color = "white"
+    backgroundColor = Theme.backgroundColor.darken(40).toString()
 }
 
 fun <E> Element.avatar(data: ImmutableBoundData<E>, usernameExtractor: (E) -> String, block: Element.() -> Unit = {}) {

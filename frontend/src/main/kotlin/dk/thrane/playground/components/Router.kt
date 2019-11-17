@@ -79,6 +79,11 @@ object Router {
         }
 
         val generator = eligibleRoutes.firstOrNull()?.generator ?: notFoundRoute
+        if (generator == notFoundRoute) {
+            println("Could not find route for: $path")
+            console.log(routes)
+        }
+
         deleteNode(currentRouteNode)
         mountRouteNode().generator(variables)
     }

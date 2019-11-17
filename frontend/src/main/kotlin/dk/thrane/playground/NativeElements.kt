@@ -88,6 +88,8 @@ inline fun Element.input(
     attrs: CommonAttributes<HTMLInputElement> = CommonAttributes(),
     placeholder: String? = null,
     type: String? = null,
+    name: String? = null,
+    required: Boolean? = null,
     children: (HTMLInputElement.() -> Unit) = {}
 ) {
     baseElement(
@@ -95,7 +97,9 @@ inline fun Element.input(
         attrs.mergeWith(
             mapOf(
                 "placeholder" to placeholder,
-                "type" to type
+                "type" to type,
+                "name" to name,
+                "required" to required?.toString()
             )
         ),
         children

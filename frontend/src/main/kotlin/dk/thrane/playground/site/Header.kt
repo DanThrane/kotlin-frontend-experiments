@@ -1,76 +1,85 @@
 package dk.thrane.playground.site
 
-import org.w3c.dom.Element
 import dk.thrane.playground.*
-import dk.thrane.playground.components.BoundData
-import dk.thrane.playground.components.boundClassByPredicate
+import dk.thrane.playground.components.Router
 import dk.thrane.playground.components.routeLink
+import org.w3c.dom.Element
 
-private const val ACTIVE_PAGE_CLASS = "active"
-
-private val style = css {
-    height = 64.px
-    backgroundColor = Theme.primary.base.toString()
-    color = Theme.onPrimary.toString()
-    paddingLeft = 16.px
+private val headerStyle = css {
     display = "flex"
     alignItems = "center"
+    justifyItems = "center"
     flexDirection = "row"
+    height = 64.px
+    marginLeft = 32.px
+    marginRight = 32.px
+    marginBottom = 32.px
+}
 
-    (byTag("h1")) {
-        fontSize = 20.pt
-        marginRight = 100.px
-    }
+private val logoStyle = css {
+    fontSize = 24.px
+    textDecoration = "none"
+}
 
-    (byTag("a")) {
-        color = Theme.onPrimary.toString()
-        textDecoration = "none"
-        outline = "0"
-    }
-
-    ((byTag("a") and byClass(ACTIVE_PAGE_CLASS)).withPseudoElement("before")) {
-        opacity = "1"
-    }
-
-    (byTag("a").withPseudoElement("before")) {
-        opacity = "0"
-
-        content = "''"
-        display = "inline-block"
-        width = 100.percent
-        marginRight = (-100).percent
-        height = 2.px
-        backgroundColor = Theme.onPrimary.toString()
-        position = "relative"
-        top = 12.px
-        transition = "opacity 0.25s ease-in"
-    }
-
-    (byTag("a").withPseudoClass("hover").withPseudoElement("before")) {
-        opacity = "1"
-    }
-
-    (byClass("spacer")) {
-        flexGrow = "1"
-    }
-
-    (matchSelf().directChild(matchAny())) {
-        marginRight = 20.px
+private fun Element.logo() {
+    routeLink(A(klass = logoStyle), href = "/overview") {
+        text(PRODUCT_NAME)
     }
 }
 
-object Header
+private val menuStyle = css {
+    display = "flex"
+    alignItems = "center"
+    justifyContent = "center"
+    flexGrow = "1"
 
-fun Element.header() {
-    div(A(klass = style)) {
-        h1 {
-            routeLink(href = "/") {
-                text("\uD83C\uDF5F\uD83D\uDCAC")
+    (byTag("a")) {
+        padding = 16.px
+        textDecoration = "none"
+        fontSize = 18.px
+    }
+
+    (byTag("a").withPseudoClass("hover")) {
+        backgroundColor = Theme.backgroundColor.darken(25).toString()
+    }
+}
+
+private fun Element.menu() {
+    div(A(klass = menuStyle)) {
+        routeLink(href = "/overview") {
+            text("Home")
+        }
+        routeLink(href = "/test") {
+            text("Test Page")
+        }
+        routeLink(href = "/test2") {
+            text("Menu Link")
+        }
+    }
+}
+
+private val userMenuStyle = css {
+    display = "flex"
+    alignItems = "center"
+    justifyContent = "center"
+}
+
+private fun Element.userMenu() {
+    div(A(klass = userMenuStyle)) {
+        avatar(AuthenticationStore.principal, { it?.username ?: "Guest" }) {
+            on("click") {
+                AuthenticationStore.logout().then {
+                    Router.push("/login")
+                }
             }
         }
+    }
+}
 
-        div(A(klass = "spacer"))
-
-        headerLogin()
+fun Element.header() {
+    div(A(klass = headerStyle)) {
+        logo()
+        menu()
+        userMenu()
     }
 }

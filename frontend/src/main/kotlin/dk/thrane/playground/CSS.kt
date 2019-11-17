@@ -95,6 +95,7 @@ var CSSPropertyListBuilder.alignItems: String by CSSDelegate()
 var CSSPropertyListBuilder.justifyContent: String by CSSDelegate()
 var CSSPropertyListBuilder.justifyItems: String by CSSDelegate()
 var CSSPropertyListBuilder.flexDirection: String by CSSDelegate()
+var CSSPropertyListBuilder.flexWrap: String by CSSDelegate()
 var CSSPropertyListBuilder.flexFlow: String by CSSDelegate()
 var CSSPropertyListBuilder.flexGrow: String by CSSDelegate()
 var CSSPropertyListBuilder.flexShrink: String by CSSDelegate()
@@ -115,6 +116,7 @@ var CSSPropertyListBuilder.textAlign: String by CSSDelegate()
 var CSSPropertyListBuilder.boxShadow: String by CSSDelegate()
 var CSSPropertyListBuilder.userSelect: String by CSSDelegate()
 var CSSPropertyListBuilder.textTransform: String by CSSDelegate()
+var CSSPropertyListBuilder.letterSpacing: String by CSSDelegate()
 
 class CSSDelegate(val name: String? = null) {
     operator fun getValue(thisRef: Any?, property: KProperty<*>): String {
@@ -215,6 +217,7 @@ infix fun CSSSelector.and(other: CSSSelector) = CSSSelector("$textValue${other.t
 val Int.pt get() = "${this}pt"
 val Int.px get() = "${this}px"
 val Int.vh get() = "${this}vh"
+val Int.vw get() = "${this}vw"
 val Int.em get() = "${this}px"
 val Int.percent get() = "${this}%"
 

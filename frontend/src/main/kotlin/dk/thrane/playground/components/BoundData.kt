@@ -1,5 +1,6 @@
 package dk.thrane.playground.components
 
+import dk.thrane.playground.onDeinit
 import dk.thrane.playground.text
 import org.w3c.dom.Element
 
@@ -78,7 +79,15 @@ fun <Data> Element.boundText(
     template: (Data) -> String
 ) {
     val node = text("")
-    data.addHandler { node.nodeValue = template(it) }
+    val handler = data.addHandler { node.nodeValue = template(it) }
+    onDeinit { data.removeHandler(handler) }
+}
+
+fun <Data> Element.boundElement(
+    data: ImmutableBoundData<Data>,
+    template: Element.(Data) -> Unit
+) {
+    cardStack(data, CardInStack({ true }, { template(data.currentValue) }))
 }
 
 fun <Data> Element.boundClass(
@@ -88,9 +97,10 @@ fun <Data> Element.boundClass(
     val node = this
     val baseClasses = node.className
     val existingClasses = node.className
-    data.addHandler { newData ->
+    val handler = data.addHandler { newData ->
         node.className = (classes(newData) + baseClasses).joinToString(" ") + " " + existingClasses
     }
+    onDeinit { data.removeHandler(handler) }
 }
 
 fun <Data> Element.boundClassByPredicate(
@@ -100,13 +110,14 @@ fun <Data> Element.boundClassByPredicate(
 ) {
     val node = this
     val baseClasses = node.className
-    data.addHandler { newData ->
+    val handler = data.addHandler { newData ->
         if (predicate(newData)) {
             node.className = (setOf(*classes) + baseClasses).joinToString(" ")
         } else {
             node.className = baseClasses
         }
     }
+    onDeinit { data.removeHandler(handler) }
 }
 
 fun Element.boundClassByPredicate(
