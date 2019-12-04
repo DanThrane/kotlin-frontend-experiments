@@ -60,6 +60,20 @@ fun Element.toasts() {
     var nextDeadline = 0.0
     val queue = ArrayList<Toast>()
 
+    val subscription = Toasts.subscribe { queue.add(it) }
+    val interval = window.setInterval({
+        val now = Date.now()
+        if (now >= nextDeadline) {
+            if (queue.isNotEmpty()) {
+                val nextToast = queue.removeAt(0)
+                activeToast.currentValue = nextToast
+                nextDeadline = nextToast.duration + now
+            } else if (activeToast.currentValue != null) {
+                activeToast.currentValue = null
+            }
+        }
+    }, 100)
+
     flex(
         A(
             classes = setOf(
@@ -70,20 +84,6 @@ fun Element.toasts() {
         )
     ) {
         boundClass(activeToast) { if (it == null) emptySet() else setOf(TOAST_ACTIVE) }
-
-        val subscription = Toasts.subscribe { queue.add(it) }
-        val interval = window.setInterval({
-            val now = Date.now()
-            if (now >= nextDeadline) {
-                if (queue.isNotEmpty()) {
-                    val nextToast = queue.removeAt(0)
-                    activeToast.currentValue = nextToast
-                    nextDeadline = nextToast.duration + now
-                } else if (activeToast.currentValue != null) {
-                    activeToast.currentValue = null
-                }
-            }
-        }, 100)
 
         onDeinit { Toasts.unsubscribe(subscription) }
         onDeinit { window.clearInterval(interval) }

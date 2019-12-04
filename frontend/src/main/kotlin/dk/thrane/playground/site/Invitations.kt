@@ -10,7 +10,7 @@ private val highlightStyle = css {
     fontWeight = "700"
 }
 
-fun Element.highlight(text: String) {
+private fun Element.highlight(text: String) {
     span(A(klass = highlightStyle)) { text(text) }
 }
 

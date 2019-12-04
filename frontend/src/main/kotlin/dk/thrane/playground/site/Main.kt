@@ -7,9 +7,12 @@ import dk.thrane.playground.components.*
 private val globalTheme = css {
     margin = 0.px
     padding = 0.px
+    fontFamily = "'Poppins', sans-serif"
 
-    (matchAny()) {
-        fontFamily = "'Poppins', sans-serif"
+    backgroundColor = Theme.backgroundColor.toString()
+
+    (byTag("a")) {
+        color = Theme.primaryTextColor.toString()
     }
 }
 
@@ -17,16 +20,22 @@ private val rootContainer = css {
     display = "flex"
     flexDirection = "column"
     minHeight = 100.vh
-
-    backgroundColor = Theme.backgroundColor.toString()
-
-    (matchAny()) {
-        color = Theme.primaryTextColor.toString()
-    }
 }
 
 fun main() {
-    rawCSS("@import url('https://fonts.googleapis.com/css?family=Poppins&display=swap');")
+    rawCSS("@import url('https://fonts.googleapis.com/css?family=Poppins&display=swap');\n")
+
+    // Adding this to a class makes it too specific
+    rawCSS(
+        """
+            body {
+                color: ${Theme.primaryTextColor}
+            }
+            
+        """.trimIndent()
+    )
+
+    FontAwesome.load()
 
     val body = document.body!!
     body.classList.add(reset)

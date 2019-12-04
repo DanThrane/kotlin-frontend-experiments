@@ -64,7 +64,7 @@ private val titleStyle = css {
 }
 
 fun Element.loginPage() {
-    val usernameRef= Reference<HTMLInputElement>()
+    val usernameRef = Reference<HTMLInputElement>()
     val passwordRef = Reference<HTMLInputElement>()
 
     cardStack(

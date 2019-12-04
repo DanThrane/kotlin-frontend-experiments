@@ -201,3 +201,10 @@ inline fun Element.video(
         children
     )
 }
+
+inline fun Element.i(
+    attrs: CommonAttributes<HTMLSpanElement> = CommonAttributes(),
+    children: (HTMLSpanElement.() -> Unit) = {}
+) {
+    baseElement("i", attrs, children)
+}
