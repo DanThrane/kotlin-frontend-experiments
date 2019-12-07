@@ -7,7 +7,6 @@ import dk.thrane.playground.components.LocalStorage
 import dk.thrane.playground.site.api.*
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import kotlin.js.Promise
 
 object AuthenticationStore {
     private val mutableToken = BoundData<String?>(null)

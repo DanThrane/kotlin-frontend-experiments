@@ -4,7 +4,6 @@ import dk.thrane.playground.*
 import dk.thrane.playground.components.CardInStack
 import dk.thrane.playground.components.Router
 import dk.thrane.playground.components.cardStack
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLInputElement

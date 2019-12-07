@@ -6,6 +6,8 @@ import kotlinx.coroutines.cancel
 import org.w3c.dom.Element
 
 private object ElementScope {
+    private val log = Log(this::class.js.name)
+
     private const val DATA_ATTRIBUTE = "data-scope"
     private var counter = 0
     private val scopes = HashMap<Int, CoroutineScope>()
@@ -21,6 +23,7 @@ private object ElementScope {
                 scopes.remove(allocatedId)
             }
             scopes[allocatedId] = newScope
+            element.setAttribute(DATA_ATTRIBUTE, "$allocatedId")
 
             newScope
         } else {

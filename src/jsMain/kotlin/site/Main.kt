@@ -1,14 +1,11 @@
 package dk.thrane.playground.site
 
-import kotlin.browser.document
 import dk.thrane.playground.*
-import dk.thrane.playground.components.*
-import dk.thrane.playground.site.api.Authentication
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import org.w3c.dom.HTMLDivElement
-import org.w3c.dom.HTMLElement
+import dk.thrane.playground.components.FontAwesome
+import dk.thrane.playground.components.reset
+import dk.thrane.playground.components.router
+import dk.thrane.playground.components.toasts
+import kotlin.browser.document
 
 private val globalTheme = css {
     margin = 0.px
@@ -29,6 +26,7 @@ private val rootContainer = css {
 }
 
 fun main() {
+    val log = Log("Main")
     rawCSS("@import url('https://fonts.googleapis.com/css?family=Poppins&display=swap');\n")
 
     // Adding this to a class makes it too specific

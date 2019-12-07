@@ -3,7 +3,6 @@ package dk.thrane.playground.site
 import dk.thrane.playground.*
 import dk.thrane.playground.components.Router
 import dk.thrane.playground.components.routeLink
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.w3c.dom.Element
 

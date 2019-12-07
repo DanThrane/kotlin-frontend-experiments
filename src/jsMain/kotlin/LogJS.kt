@@ -4,10 +4,10 @@ actual fun printlnWithLogColor(level: LogLevel, message: String) {
     console.log(
         "%c$message",
         when (level) {
-            LogLevel.DEBUG -> "color: gray"
-            LogLevel.INFO -> "color: black"
-            LogLevel.WARN -> "color: yellow"
-            LogLevel.ERROR -> "color: red"
+            LogLevel.DEBUG -> "color: gray; background: white"
+            LogLevel.INFO -> "color: black; background: white"
+            LogLevel.WARN -> "color: yellow; background: white"
+            LogLevel.ERROR -> "color: red; background: white"
         }
     )
 }
