@@ -1,5 +1,6 @@
 package dk.thrane.playground
 
+import kotlinx.coroutines.await
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.ArrayBufferView
 import org.khronos.webgl.Int8Array
@@ -124,6 +125,14 @@ class WSConnectionPool(
             val (resolve, _) = queue.removeAt(0)
             resolve(Pair(idx, conn.conn))
         }
+    }
+
+    suspend fun openConnectionSuspending(
+        autoReconnect: Boolean = true,
+        onOpen: () -> Unit = {},
+        onClose: () -> Unit = {}
+    ) {
+        openConnection(autoReconnect, onOpen, onClose).await()
     }
 
     fun openConnection(

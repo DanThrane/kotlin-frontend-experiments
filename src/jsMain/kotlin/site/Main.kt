@@ -3,6 +3,9 @@ package dk.thrane.playground.site
 import kotlin.browser.document
 import dk.thrane.playground.*
 import dk.thrane.playground.components.*
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val globalTheme = css {
     margin = 0.px
@@ -65,6 +68,13 @@ fun main() {
                     overviewPage()
                 }
             )
+        }
+    }
+
+    GlobalScope.launch {
+        repeat(10) {
+            println(it)
+            delay(1000)
         }
     }
 }
