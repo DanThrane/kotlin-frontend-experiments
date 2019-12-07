@@ -3,9 +3,12 @@ package dk.thrane.playground.site
 import kotlin.browser.document
 import dk.thrane.playground.*
 import dk.thrane.playground.components.*
+import dk.thrane.playground.site.api.Authentication
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.w3c.dom.HTMLDivElement
+import org.w3c.dom.HTMLElement
 
 private val globalTheme = css {
     margin = 0.px

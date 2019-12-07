@@ -47,7 +47,8 @@ object AuthenticationStore {
             if (newToken == null) {
                 mutablePrincipal.currentValue = null
             } else {
-                // TODO Not correct scope to use here
+                // Note: We might at a later point get a better scope. But for the moment this authentication state
+                // lives for the entire duration of the application.
                 GlobalScope.launch {
                     val resp = Authentication.whoami.call(
                         connectionPool,

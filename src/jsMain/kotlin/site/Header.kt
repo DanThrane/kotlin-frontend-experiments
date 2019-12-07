@@ -70,8 +70,7 @@ private fun Element.userMenu() {
     div(A(klass = userMenuStyle)) {
         avatar(AuthenticationStore.principal, { it?.username ?: "Guest" }) {
             on("click") {
-                // TODO Definitely not the right scope to use
-                GlobalScope.launch {
+                scope.launch {
                     AuthenticationStore.logout()
                     Router.push("/login")
                 }

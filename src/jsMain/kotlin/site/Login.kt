@@ -92,8 +92,7 @@ fun Element.loginPage() {
                         form {
                             on("submit") { e ->
                                 e.preventDefault()
-                                // TODO Bad scope
-                                GlobalScope.launch {
+                                scope.launch {
                                     AuthenticationStore.login(
                                         usernameRef.current.value,
                                         passwordRef.current.value
