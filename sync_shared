@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-rm -rf frontend/src/main/kotlin/dk/thrane/playground/site/api/ 
-cp -r backend/src/main/kotlin/dk/thrane/playground/site/api/ frontend/src/main/kotlin/dk/thrane/playground/site/api/
-
-cp backend/src/main/kotlin/dk/thrane/playground/RPC.kt frontend/src/main/kotlin/dk/thrane/playground/RPC.kt
-cp backend/src/main/kotlin/dk/thrane/playground/MessageType.kt frontend/src/main/kotlin/dk/thrane/playground/MessageType.kt
