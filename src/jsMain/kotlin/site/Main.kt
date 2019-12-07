@@ -70,11 +70,4 @@ fun main() {
             )
         }
     }
-
-    GlobalScope.launch {
-        repeat(10) {
-            println(it)
-            delay(1000)
-        }
-    }
 }

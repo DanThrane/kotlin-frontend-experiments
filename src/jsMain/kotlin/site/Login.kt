@@ -4,6 +4,8 @@ import dk.thrane.playground.*
 import dk.thrane.playground.components.CardInStack
 import dk.thrane.playground.components.Router
 import dk.thrane.playground.components.cardStack
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLInputElement
 
@@ -90,7 +92,13 @@ fun Element.loginPage() {
                         form {
                             on("submit") { e ->
                                 e.preventDefault()
-                                AuthenticationStore.login(usernameRef.current.value, passwordRef.current.value)
+                                // TODO Bad scope
+                                GlobalScope.launch {
+                                    AuthenticationStore.login(
+                                        usernameRef.current.value,
+                                        passwordRef.current.value
+                                    )
+                                }
                             }
 
                             input(

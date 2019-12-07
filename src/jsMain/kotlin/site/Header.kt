@@ -3,6 +3,8 @@ package dk.thrane.playground.site
 import dk.thrane.playground.*
 import dk.thrane.playground.components.Router
 import dk.thrane.playground.components.routeLink
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import org.w3c.dom.Element
 
 private val headerStyle = css {
@@ -68,7 +70,9 @@ private fun Element.userMenu() {
     div(A(klass = userMenuStyle)) {
         avatar(AuthenticationStore.principal, { it?.username ?: "Guest" }) {
             on("click") {
-                AuthenticationStore.logout().then {
+                // TODO Definitely not the right scope to use
+                GlobalScope.launch {
+                    AuthenticationStore.logout()
                     Router.push("/login")
                 }
             }
