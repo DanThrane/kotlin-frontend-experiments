@@ -1,25 +1,40 @@
 package dk.thrane.playground
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.await
+import kotlinx.coroutines.launch
+import kotlinx.serialization.protobuf.ProtoBuf
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.ArrayBufferView
 import org.khronos.webgl.Int8Array
-import org.khronos.webgl.Uint8Array
 import org.w3c.dom.ARRAYBUFFER
 import org.w3c.dom.BinaryType
 import org.w3c.dom.MessageEvent
 import org.w3c.dom.WebSocket
 import kotlin.browser.window
 import kotlin.js.Promise
+import kotlin.time.ExperimentalTime
+import kotlin.time.measureTime
+
+fun Int8Array.asByteArray(): ByteArray = unsafeCast<ByteArray>()
+
+data class MessageSubscription<Req, Res>(
+    val rpc: RPC<Req, Res>,
+    val handler: (header: ResponseHeader, response: Result<Res>) -> Unit
+)
 
 class WSConnection internal constructor(
     location: String,
     private val scope: CoroutineScope
 ) {
+    private val log = Log(this::class.js.name)
     private val socket: WebSocket = WebSocket(location)
-    private val subscriptions = HashMap<Int, suspend (Result<BoundMessage<*>>) -> Unit>()
+    private val subscriptions = HashMap<Int, MessageSubscription<*, *>>()
     private val onCloseHandlers = ArrayList<suspend () -> Unit>()
     private var onOpenPromise: Promise<Unit>
+
+    private var currentResponseHeader: ResponseHeader? = null
 
     init {
         socket.binaryType = BinaryType.ARRAYBUFFER
@@ -31,26 +46,44 @@ class WSConnection internal constructor(
         }
 
         socket.addEventListener("message", { e ->
-            val data = (e as MessageEvent).data as ArrayBuffer
+            val frame = Int8Array((e as MessageEvent).data as ArrayBuffer).asByteArray()
 
-            val stream = ByteStreamJS(Int8Array(data).unsafeCast<ByteArray>())
-            val parseMessage = parseMessage(stream) as ObjectField
-            val boundResponse = BoundMessage<ResponseSchema<EmptySchema>>(parseMessage)
-
-            val requestId = boundResponse[EmptyResponseSchema.requestId]
-            val statusCode = ResponseCode.values().find {
-                it.statusCode == boundResponse[EmptyResponseSchema.statusCode]
-            }!!
-
-            val result = if (statusCode == ResponseCode.OK) {
-                Result.success(boundResponse as BoundMessage<*>)
-            } else {
-                @Suppress("ThrowableNotThrown")
-                Result.failure(RPCException(statusCode, statusCode.name))
+            val before = window.performance.now()
+            val capturedResponseHandler = currentResponseHeader
+            if (capturedResponseHandler == null) {
+                // TODO We need error handling for this
+                this.currentResponseHeader = ProtoBuf.load(ResponseHeader.serializer(), frame)
             }
 
-            scope.launch {
-                subscriptions[requestId]?.invoke(result)
+            val newCapturedResponseHandler = currentResponseHeader
+            if ((capturedResponseHandler != null && newCapturedResponseHandler != null) ||
+                (newCapturedResponseHandler != null && !newCapturedResponseHandler.hasBody)
+            ) {
+                val requestId = newCapturedResponseHandler.requestId
+                val statusCode = ResponseCode.valueOf(newCapturedResponseHandler.statusCode)
+                @Suppress("UNCHECKED_CAST")
+                val handler = subscriptions[requestId] as MessageSubscription<Any?, Any?>?
+
+                if (handler != null) {
+                    val body = if (newCapturedResponseHandler.hasBody) {
+                        ProtoBuf.load(handler.rpc.responseSerializer, frame)
+                    } else {
+                        null
+                    }
+
+                    val result = if (statusCode == ResponseCode.OK) {
+                        Result.success(body)
+                    } else {
+                        @Suppress("ThrowableNotThrown")
+                        Result.failure(RPCException(statusCode, statusCode.name))
+                    }
+
+                    handler.handler(newCapturedResponseHandler, result)
+                } else {
+                    log.debug("Couldn't find handler for response!")
+                }
+
+                currentResponseHeader = null
             }
         })
 
@@ -72,12 +105,13 @@ class WSConnection internal constructor(
         socket.send(buffer)
     }
 
-    fun <R : MessageSchema<R>> addSubscription(
+    fun <Req, Res> addSubscription(
         requestId: Int,
-        handler: suspend (Result<BoundMessage<RequestSchema<R>>>) -> Unit
+        rpc: RPC<Req, Res>,
+        handler: (header: ResponseHeader, Result<Res>) -> Unit
     ) {
         @Suppress("UNCHECKED_CAST")
-        subscriptions[requestId] = handler as suspend (Result<BoundMessage<*>>) -> Unit
+        subscriptions[requestId] = MessageSubscription(rpc, handler)
     }
 
     fun addOnCloseHandler(handler: suspend () -> Unit) {
@@ -128,7 +162,6 @@ class WSConnectionPool(
             }
         }
 
-        println("Going in the queue!!!!")
         return Promise<Pair<Int, WSConnection>> { resolve, reject ->
             queue.add(Pair(resolve, reject))
         }.await()
@@ -172,9 +205,7 @@ class WSConnectionPool(
             pool[idx]!!.virtualConnections += vc
             Connections.open.call(
                 ConnectionWithAuthorization(conn),
-                buildOutgoing(OpenConnectionSchema) {
-                    it[OpenConnectionSchema.id] = vc.id
-                }
+                OpenConnectionSchema(vc.id)
             )
             vc.onOpen()
 
@@ -194,7 +225,7 @@ class WSConnectionPool(
                     try {
                         Connections.close.call(
                             ConnectionWithAuthorization(conn.conn),
-                            buildOutgoing(CloseConnectionSchema) { it[CloseConnectionSchema.id] = vc.id }
+                            CloseConnectionSchema(vc.id)
                         )
                     } finally {
                         vc.onClose()
@@ -246,46 +277,55 @@ data class ConnectionWithAuthorization internal constructor(
 
 private var requestIdCounter = 0
 
-suspend fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
+suspend fun <Req, Res> RPC<Req, Res>.call(
     pool: WSConnectionPool,
-    message: BoundOutgoingMessage<Req>,
+    message: Req,
     vc: VirtualConnection = STATELESS_CONNECTION,
     auth: String? = null
-): BoundMessage<Res> {
+): Res {
     return pool.useConnection(vc) { conn ->
         call(conn.copy(authorization = auth), message)
     }
 }
 
-suspend fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
+@UseExperimental(ExperimentalTime::class)
+suspend fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
-    message: BoundOutgoingMessage<Req>
-): BoundMessage<Res> {
+    message: Req
+): Res {
     val start = window.performance.now()
-    console.log("Calling --> ${this.requestName}", message)
+    console.log("Calling --> ${this.requestName}", message, start)
     val (connection, virtualConnection, auth) = connectionWithAuth
     val requestId = requestIdCounter++
-    val stream = ByteOutStreamJS(Uint8Array(1024 * 64))
-    writeMessage(stream, outgoingRequest(virtualConnection.id, requestId, auth, message).build())
 
-    return Promise<BoundMessage<Res>> { resolve, reject ->
-        connection.addSubscription<Res>(requestId) { result ->
+    return Promise<Res> { resolve, reject ->
+        connection.addSubscription(requestId, this) { header, result ->
             val time = window.performance.now() - start
             if (result.isFailure) {
                 val exception = result.exceptionOrNull() as RPCException
                 console.log("[${exception.statusCode}] --> ${this.requestName} ($time ms)", exception)
                 reject(exception)
             } else {
-                @Suppress("UNCHECKED_CAST")
-                val responseMessage = result.getOrNull()!! as BoundMessage<ResponseSchema<Res>>
-                val responseCode = ResponseCode.valueOf(responseMessage[response.statusCode])
-                console.log("[$responseCode] ${this.requestName} ($time ms)", responseMessage[response.response])
-                resolve(responseMessage[response.response])
+                val responseMessage = result.getOrNull()!!
+                val responseCode = ResponseCode.valueOf(header.statusCode)
+                console.log("[$responseCode] ${this.requestName} ($time ms)", responseMessage)
+                resolve(responseMessage)
             }
 
             connection.removeSubscription(requestId)
         }
 
-        connection.send(stream.viewMessage())
+        val obj = RequestHeader(virtualConnection.id, requestId, requestName, auth ?: "", true)
+
+        val buffer = ProtoBuf.dump(
+            RequestHeader.serializer(),
+            obj
+        ).unsafeCast<Int8Array>()
+        val buffer1 = ProtoBuf.dump(requestSerializer, message).unsafeCast<Int8Array>()
+        connection.send(
+            buffer
+        )
+
+        connection.send(buffer1)
     }.await()
 }

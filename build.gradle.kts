@@ -1,11 +1,13 @@
 plugins {
     kotlin("multiplatform") version "1.3.61"
+    kotlin("plugin.serialization") version "1.3.61"
 }
 
 group = "dk.thrane.playground"
 version = "0.1.0"
 
 repositories {
+    jcenter()
     mavenCentral()
 }
 
@@ -35,6 +37,8 @@ kotlin {
             dependencies {
                 implementation(kotlin("stdlib-common"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.2")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-runtime-common:0.14.0")
+
             }
         }
         val commonTest by getting {
@@ -50,6 +54,7 @@ kotlin {
                 implementation(kotlin("stdlib-jdk8"))
                 implementation("com.h2database:h2:1.4.199")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.3.2")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-runtime:0.14.0")
             }
         }
 
@@ -63,6 +68,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("stdlib-js"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-js:1.3.2")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-runtime-js:0.14.0")
             }
         }
 

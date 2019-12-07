@@ -1,6 +1,6 @@
 package dk.thrane.playground.site
 
-import dk.thrane.playground.EmptyOutgoingMessage
+import dk.thrane.playground.EmptyMessage
 import dk.thrane.playground.call
 import dk.thrane.playground.components.BoundData
 import dk.thrane.playground.components.LocalStorage
@@ -23,7 +23,7 @@ object AuthenticationStore {
             connectionPool,
             LoginRequest(username, password)
         )
-        mutableToken.currentValue = resp[LoginResponse.token]
+        mutableToken.currentValue = resp.token
     }
 
     suspend fun logout() {
@@ -51,10 +51,10 @@ object AuthenticationStore {
                 GlobalScope.launch {
                     val resp = Authentication.whoami.call(
                         connectionPool,
-                        EmptyOutgoingMessage(),
+                        EmptyMessage,
                         auth = token.currentValue
                     )
-                    mutablePrincipal.currentValue = resp.toModel()
+                    mutablePrincipal.currentValue = resp
                 }
             }
         }

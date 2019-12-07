@@ -9,29 +9,11 @@ val connectionPool = WSConnectionPool("ws://${document.location!!.host}")
 /**
  * Calls an RPC with the default connectionPool and the default authorization token.
  */
-suspend fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPC<Req, Res>.call(
-    message: BoundOutgoingMessage<Req>,
+suspend fun <Req, Res> RPC<Req, Res>.call(
+    message: Req,
     vc: VirtualConnection = STATELESS_CONNECTION
-): BoundMessage<Res> {
+): Res {
     return connectionPool.useConnection(vc) { conn ->
         call(conn.copy(authorization = AuthenticationStore.token.currentValue), message)
     }
-}
-
-
-/**
- * Calls an RPC with the default connectionPool and the default authorization token.
- */
-suspend fun <Req : MessageSchema<Req>,
-        Res : MessageSchema<Res>,
-        MappedReq : OutgoingConverter<Req>,
-        MappedRes : OutgoingConverter<Res>> RPC<Req, Res>.call(
-    message: MappedReq,
-    converter: IngoingConverter<MappedRes, Res>,
-    vc: VirtualConnection = STATELESS_CONNECTION
-): MappedRes {
-    val res = connectionPool.useConnection(vc) { conn ->
-        call(conn.copy(authorization = AuthenticationStore.token.currentValue), message.toOutgoing())
-    }
-    return converter.fromIngoing(res)
 }

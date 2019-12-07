@@ -1,12 +1,15 @@
 package dk.thrane.playground
 
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialId
+import kotlinx.serialization.Serializable
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
 abstract class RPCNamespace(val namespace: String) {
-    fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> call(
-        request: Req,
-        response: Res
+    fun <Req, Res> call(
+        request: KSerializer<Req>,
+        response: KSerializer<Res>
     ): ReadOnlyProperty<RPCNamespace, RPC<Req, Res>> = object : ReadOnlyProperty<RPCNamespace, RPC<Req, Res>> {
         private var value: RPC<Req, Res>? = null
 
@@ -18,83 +21,35 @@ abstract class RPCNamespace(val namespace: String) {
     }
 }
 
-class RPC<Req : MessageSchema<Req>, Res : MessageSchema<Res>>(
+class RPC<Req, Res>(
     val namespace: String,
     val name: String,
-    val requestPayload: Req,
-    val responsePayload: Res
+    val requestSerializer: KSerializer<Req>,
+    val responseSerializer: KSerializer<Res>
 ) {
     val requestName = "${namespace}.${name}"
-    val request = RequestSchema(requestPayload)
-    val response = ResponseSchema(responsePayload)
-
-    fun outgoingRequest(
-        connectionId: Int,
-        requestId: Int,
-        authorization: String? = null,
-        request: BoundOutgoingMessage<Req>
-    ): BoundOutgoingMessage<RequestSchema<Req>> {
-        val outgoing = BoundOutgoingMessage(this.request)
-        outgoing[this.request.connectionId] = connectionId
-        outgoing[this.request.requestId] = requestId
-        outgoing[this.request.requestName] = requestName
-        outgoing[this.request.authorization] = authorization
-        outgoing[this.request.payload] = request
-        return outgoing
-    }
-
-    fun outgoingResponse(
-        connectionId: Int,
-        requestId: Int,
-        responseCode: ResponseCode,
-        response: BoundOutgoingMessage<Res>
-    ): BoundOutgoingMessage<ResponseSchema<Res>> {
-        val outgoing = BoundOutgoingMessage(this.response)
-        outgoing[this.response.connectionId] = connectionId
-        outgoing[this.response.requestId] = requestId
-        outgoing[this.response.statusCode] = responseCode.statusCode
-        outgoing[this.response.response] = response
-        return outgoing
-    }
 
     override fun toString() = "RPC($requestName)"
 }
 
-object EmptySchema : MessageSchema<EmptySchema>() {
-    // Empty
-}
+@Serializable
+data class OpenConnectionSchema(
+    @SerialId(1)
+    val id: Int
+)
 
-val EmptyRequestSchema = RequestSchema(EmptySchema)
-val EmptyResponseSchema = ResponseSchema(EmptySchema)
+@Serializable
+class CloseConnectionSchema(
+    @SerialId(1)
+    val id: Int
+)
 
-fun EmptyOutgoingMessage() = buildOutgoing(EmptySchema) {}
-
-object OpenConnectionSchema : MessageSchema<OpenConnectionSchema>() {
-    val id = int(0)
-}
-
-object CloseConnectionSchema : MessageSchema<CloseConnectionSchema>() {
-    val id = int(0)
-}
+@Serializable
+object EmptyMessage
 
 object Connections : RPCNamespace("connections") {
-    val open by call(OpenConnectionSchema, EmptySchema)
-    val close by call(CloseConnectionSchema, EmptySchema)
-}
-
-class RequestSchema<R : MessageSchema<R>>(schema: R) : MessageSchema<RequestSchema<R>>() {
-    val connectionId = int(0)
-    val requestId = int(1)
-    val requestName = string(2)
-    val authorization = stringNullable(3)
-    val payload = obj(4, schema)
-}
-
-class ResponseSchema<R : MessageSchema<R>>(schema: R) : MessageSchema<ResponseSchema<R>>() {
-    val connectionId = int(0)
-    val requestId = int(1)
-    val statusCode = byte(2)
-    val response = obj(3, schema)
+    val open by call(OpenConnectionSchema.serializer(), EmptyMessage.serializer())
+    val close by call(CloseConnectionSchema.serializer(), EmptyMessage.serializer())
 }
 
 enum class ResponseCode(val statusCode: Byte) {

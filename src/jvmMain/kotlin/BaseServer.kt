@@ -1,74 +1,24 @@
 package dk.thrane.playground
 
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.File
 import kotlin.collections.ArrayList
 
-object ConnectionController : Controller() {
-    private val knownConnections = HashMap<String, Set<Int>>()
-
-    override fun configureController() {
-        implement(Connections.open) {
-            synchronized(knownConnections) {
-                val current = knownConnections[socketId] ?: emptySet()
-                knownConnections[socketId] = current + request[OpenConnectionSchema.id]
-            }
-
-            respond { }
-        }
-
-        implement(Connections.close) {
-            synchronized(knownConnections) {
-                val current = knownConnections[socketId] ?: emptySet()
-                val newSet = current - request[CloseConnectionSchema.id]
-                if (newSet.isNotEmpty()) {
-                    knownConnections[socketId] = newSet
-                } else {
-                    knownConnections.remove(socketId)
-                }
-            }
-
-            respond { }
-        }
-    }
-
-    internal val prehandler: PreHandler = handler@{ rpc, message ->
-        val connectionId = message[EmptyRequestSchema.connectionId]
-
-        // We consider conn 0 to be implicitly initialized by WebSocket open
-        if (connectionId == 0) return@handler PreHandlerAction.Continue
-
-        val requestId = message[EmptyRequestSchema.requestId]
-        val socketId = socketId
-
-        val connsForSocket = knownConnections[socketId] ?: emptySet()
-        if (connectionId !in connsForSocket) {
-            PreHandlerAction.Terminate(
-                EmptyRPC.outgoingResponse(
-                    connectionId,
-                    requestId,
-                    ResponseCode.BAD_REQUEST,
-                    BoundOutgoingMessage(EmptySchema)
-                )
-            )
-        } else {
-            PreHandlerAction.Continue
-        }
-    }
-}
-
 sealed class PreHandlerAction {
     object Continue : PreHandlerAction()
-    class Terminate(val responseMessage: BoundOutgoingMessage<ResponseSchema<EmptySchema>>) : PreHandlerAction()
+    class Terminate(val code: ResponseCode) : PreHandlerAction()
 }
 
-typealias PreHandler = HttpClient.(
+typealias PreHandler = HttpClientSession.(
     rpc: RPC<*, *>?,
-    message: BoundMessage<RequestSchema<EmptySchema>>
+    header: RequestHeader,
+    requestPayload: Any?
 ) -> PreHandlerAction
 
-typealias PostHandler = HttpClient.(
+typealias PostHandler = HttpClientSession.(
     rpc: RPC<*, *>?,
-    message: BoundMessage<RequestSchema<EmptySchema>>
+    requestPayload: Any?
 ) -> Unit
 
 abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
@@ -94,7 +44,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         postHandlers.add(handler)
     }
 
-    override fun HttpClient.handleRequest(method: HttpMethod, path: String) {
+    override fun HttpClientSession.handleRequest(method: HttpMethod, path: String) {
         val rootDir = File(".").normalize().absoluteFile
         val rootDirPath = rootDir.absolutePath + "/"
 
@@ -125,9 +75,9 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         }
     }
 
-    override fun HttpClient.handleBinaryFrame(frame: ByteArray) {
-        val message = try {
-            parseMessage(ByteStreamJVM(frame)) as ObjectField
+    private fun HttpClientSession.handleRequestFrame(frame: ByteArray) {
+        currentRequestHeader = try {
+            ProtoBuf.load(RequestHeader.serializer(), frame)
         } catch (ex: Throwable) {
             log.warn("Caught an exception parsing message")
             log.warn(ex.stackTraceToString())
@@ -136,120 +86,160 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
             closing = true
             return
         }
+    }
 
-        var connectionId: Int? = null
-        var requestId: Int? = null
+    private fun HttpClientSession.handleRequestBodyFrame(frame: ByteArray?) {
+        val requestHeader = currentRequestHeader
+        requireNotNull(requestHeader)
+
         var rpcUsedForHandling: RPC<*, *>? = null
         var didHandleMessage = false
-        val requestMessage = BoundMessage<RequestSchema<EmptySchema>>(message)
 
         try {
-            val requestName = requestMessage[EmptyRequestSchema.requestName]
-            requestId = requestMessage[EmptyRequestSchema.requestId]
-            connectionId = requestMessage[EmptyRequestSchema.connectionId]
+            val foundHandler: Pair<RPC<*, *>, UntypedRPChandler>? =
+                controllers
+                    .asSequence()
+                    .mapNotNull { it.findHandler(requestHeader.requestName) }
+                    .take(1)
+                    .toList()
+                    .singleOrNull()
 
-            // TODO We need a unified place to set connection id and request id
-            controllers@ for (controller in controllers) {
-                val (rpc, handler) = controller.findHandler(requestName) ?: continue
-                rpcUsedForHandling = rpc
+            val requestMessage = if (foundHandler?.first != null && requestHeader.hasBody) {
+                require(frame != null)
 
+                val rpc = foundHandler.first
+                try {
+                    ProtoBuf.load(rpc.requestSerializer, frame)
+                } catch (ex: Throwable) {
+                    log.debug(ex.stackTraceToString())
+                    throw RPCException(ResponseCode.BAD_REQUEST, "Invalid request message")
+                }
+            } else {
+                null
+            }
+
+            val didPreHandlerTerminate = run {
                 for (preHandler in preHandlers) {
-                    when (val handlerAction = preHandler(rpc, requestMessage)) {
+                    when (val handlerAction = preHandler(foundHandler?.first, requestHeader, requestMessage)) {
                         PreHandlerAction.Continue -> {
                             // Do nothing (Continue to next handler)
                         }
 
                         is PreHandlerAction.Terminate -> {
                             didHandleMessage = true
-                            sendMessage(handlerAction.responseMessage.build())
-                            break@controllers
+                            sendMessage(
+                                ResponseHeader(
+                                    requestHeader.connectionId,
+                                    requestHeader.requestId,
+                                    handlerAction.code.statusCode,
+                                    false
+                                ),
+                                ResponseHeader.serializer()
+                            )
+                            return@run true
                         }
                     }
                 }
 
-                @Suppress("UNCHECKED_CAST")
-                // These casts are non-sense but it doesn't really matter since we enforce type safety through the
-                // controller interface
-                handleRPC(
-                    connectionId,
-                    requestId,
-                    rpc as RPC<EmptySchema, EmptySchema>,
-                    handler as RPCHandler<EmptySchema, EmptySchema>,
-                    requestMessage
-                )
-                break
+                false
+            }
+
+            if (foundHandler != null && !didPreHandlerTerminate) {
+                val (rpc, handler) = foundHandler
+                rpcUsedForHandling = rpc
+
+                if (!didPreHandlerTerminate) {
+                    @Suppress("UNCHECKED_CAST")
+                    // These casts are non-sense but it doesn't really matter since we enforce type safety through the
+                    // controller interface
+                    handleRPC(
+                        requestHeader,
+                        rpc as RPC<Any?, Any?>,
+                        handler as RPCHandler<Any?, Any?>,
+                        requestMessage
+                    )
+
+                    didHandleMessage = true
+                }
             }
         } catch (ex: RPCException) {
             ex.printStackTrace()
+            didHandleMessage = true
             sendMessage(
-                EmptyRPC.outgoingResponse(
-                    connectionId ?: -1,
-                    requestId ?: -1,
-                    ResponseCode.BAD_REQUEST,
-                    BoundOutgoingMessage(EmptySchema)
-                ).build()
+                ResponseHeader(
+                    requestHeader.connectionId,
+                    requestHeader.requestId,
+                    ResponseCode.BAD_REQUEST.statusCode,
+                    false
+                ),
+                ResponseHeader.serializer()
             )
-            return
         }
 
         if (!didHandleMessage) {
-            var didSendPreHandler = false
-            handlers@ for (preHandler in preHandlers) {
-                when (val handlerAction = preHandler(null, requestMessage)) {
-                    PreHandlerAction.Continue -> {
-                        // Do nothing (Continue to next handler)
-                    }
-
-                    is PreHandlerAction.Terminate -> {
-                        sendMessage(handlerAction.responseMessage.build())
-                        didSendPreHandler = true
-                        break@handlers
-                    }
-                }
-            }
-
-            if (!didSendPreHandler) {
-                val outgoing = EmptyRPC.outgoingResponse(
-                    connectionId,
-                    requestId,
-                    ResponseCode.NOT_FOUND,
-                    BoundOutgoingMessage(EmptySchema)
-                )
-
-                sendMessage(outgoing.build())
-            }
+            sendMessage(
+                ResponseHeader(
+                    requestHeader.connectionId,
+                    requestHeader.requestId,
+                    ResponseCode.NOT_FOUND.statusCode,
+                    false
+                ),
+                ResponseHeader.serializer()
+            )
         }
 
         for (postHandler in postHandlers) {
-            postHandler(rpcUsedForHandling, requestMessage)
+            try {
+                postHandler(rpcUsedForHandling, requestHeader)
+            } catch (ex: Throwable) {
+                log.info("Post handler threw an exception!")
+                log.info(ex.stackTraceToString())
+            }
         }
     }
 
-    private fun HttpClient.sendMessage(outgoing: ObjectField) {
-        defaultBufferPool.useInstance { buffer ->
-            val out = ByteOutStreamJVM(buffer)
-            writeMessage(out, outgoing)
-            sendWebsocketFrame(WebSocketOpCode.BINARY, buffer, 0, out.ptr)
+    override fun HttpClientSession.handleBinaryFrame(frame: ByteArray) {
+        if (currentRequestHeader == null) {
+            handleRequestFrame(frame)
+
+            if (currentRequestHeader?.hasBody == false) {
+                try {
+                    handleRequestBodyFrame(null)
+                } finally {
+                    currentRequestHeader = null
+                }
+            }
+        } else {
+            try {
+                handleRequestBodyFrame(frame)
+            } finally {
+                currentRequestHeader = null
+            }
         }
     }
 
-    private fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> HttpClient.handleRPC(
-        connectionId: Int,
-        requestId: Int,
+    private fun <T> HttpClientSession.sendMessage(message: T, serializer: KSerializer<T>) {
+        sendWebsocketFrame(WebSocketOpCode.BINARY, ProtoBuf.dump(serializer, message))
+    }
+
+    private fun <Req, Res> HttpClientSession.handleRPC(
+        header: RequestHeader,
         rpc: RPC<Req, Res>,
         handler: RPCHandler<Req, Res>,
-        requestMessage: BoundMessage<RequestSchema<Req>>
+        payload: Req
     ) {
         val start = System.nanoTime()
         try {
-            val payload = requestMessage[rpc.request.payload]
-            val authorization = requestMessage[rpc.request.authorization]
+            val authorization = header.authorization.takeIf { it.isNotBlank() }
 
-            log.info("$rpc requestId=$requestId payload=$payload")
+            log.info("$rpc requestId=${header.requestId} payload=$payload")
             val (statusCode, response) = RPCHandlerContextImpl(payload, authorization, socketId, rpc).handler()
-            val outgoing = rpc.outgoingResponse(connectionId, requestId, statusCode, response)
 
-            sendMessage(outgoing.build())
+            sendMessage(
+                ResponseHeader(header.connectionId, header.requestId, statusCode.statusCode, true),
+                ResponseHeader.serializer()
+            )
+            sendMessage(response, rpc.responseSerializer)
         } catch (ex: Throwable) {
             val statusCode = if (ex is RPCException) {
                 ex.statusCode
@@ -258,103 +248,17 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
                 ResponseCode.INTERNAL_ERROR
             }
 
-            val outgoing =
-                EmptyRPC.outgoingResponse(connectionId, requestId, statusCode, BoundOutgoingMessage(EmptySchema))
-            sendMessage(outgoing.build())
+            sendMessage(
+                ResponseHeader(header.connectionId, header.requestId, statusCode.statusCode, false),
+                ResponseHeader.serializer()
+            )
         }
 
         val end = System.nanoTime()
-        log.debug("$rpc requestId=$requestId took ${end - start} nanos")
+        log.debug("$rpc requestId=${header.requestId} took ${end - start} nanos")
     }
 
     companion object {
         private val log = Log("BaseServer")
     }
-}
-
-/**
- * An empty [RPC] used for generating responses without a payload. This is useful for errors.
- */
-private val EmptyRPC = RPC("~empty~", "~empty~", EmptySchema, EmptySchema)
-
-interface RPCHandlerContext<Req : MessageSchema<Req>, Res : MessageSchema<Res>> {
-    val request: BoundMessage<Req>
-    val authorization: String?
-    val socketId: String
-    val rpc: RPC<Req, Res>
-}
-
-class RPCHandlerContextImpl<Req : MessageSchema<Req>, Res : MessageSchema<Res>>(
-    override val request: BoundMessage<Req>,
-    override val authorization: String?,
-    override val socketId: String,
-    override val rpc: RPC<Req, Res>
-) : RPCHandlerContext<Req, Res>
-
-class RespondingContext<Res : MessageSchema<Res>>(
-    val schema: Res,
-    val message: BoundOutgoingMessage<Res>
-)
-
-inline fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> RPCHandlerContext<Req, Res>.respond(
-    code: ResponseCode = ResponseCode.OK,
-    builder: RespondingContext<Res>.() -> Unit
-): Pair<ResponseCode, BoundOutgoingMessage<Res>> {
-    val message = BoundOutgoingMessage(rpc.responsePayload)
-    RespondingContext(rpc.responsePayload, message).builder()
-    return Pair(code, message)
-}
-
-typealias RPCHandler<Req, Res> = RPCHandlerContext<Req, Res>.() -> Pair<ResponseCode, BoundOutgoingMessage<Res>>
-typealias UntypedRPChandler = (call: BoundMessage<*>) -> BoundOutgoingMessage<*>
-
-abstract class Controller {
-    private var isConfiguring = true
-    private val handlers = ArrayList<Pair<RPC<*, *>, UntypedRPChandler>>()
-
-    fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>> implement(
-        rpc: RPC<Req, Res>,
-        handler: RPCHandler<Req, Res>
-    ) {
-        check(isConfiguring)
-
-        @Suppress("UNCHECKED_CAST")
-        handlers.add(rpc to handler as UntypedRPChandler)
-    }
-
-    fun findHandler(requestName: String): Pair<RPC<*, *>, UntypedRPChandler>? {
-        return handlers.find { it.first.requestName == requestName }
-    }
-
-    fun configure() {
-        isConfiguring = true
-        configureController()
-        isConfiguring = false
-    }
-
-    protected abstract fun configureController()
-}
-
-data class MappedRPCHandlerContext<Req : MessageSchema<Req>, Res : MessageSchema<Res>, Mapped : OutgoingConverter<Req>>(
-    val mappedRequest: Mapped,
-    private val delegate: RPCHandlerContext<Req, Res>
-) : RPCHandlerContext<Req, Res> by delegate
-
-fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>, Mapped : OutgoingConverter<Req>> Controller.implement(
-    rpc: RPC<Req, Res>,
-    converter: IngoingConverter<Mapped, Req>,
-    handler: MappedRPCHandlerContext<Req, Res, Mapped>.() -> Pair<ResponseCode, BoundOutgoingMessage<Res>>
-) {
-    implement(rpc) {
-        MappedRPCHandlerContext(converter.fromIngoing(request), this).handler()
-    }
-}
-
-
-fun <Req : MessageSchema<Req>, Res : MessageSchema<Res>,
-        Mapped : OutgoingConverter<Res>> RPCHandlerContext<Req, Res>.respond(
-    value: Mapped,
-    code: ResponseCode = ResponseCode.OK
-): Pair<ResponseCode, BoundOutgoingMessage<Res>> {
-    return Pair(code, value.toOutgoing())
 }

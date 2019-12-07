@@ -6,7 +6,7 @@ actual fun printlnWithLogColor(level: LogLevel, message: String) {
         when (level) {
             LogLevel.DEBUG -> "color: gray; background: white"
             LogLevel.INFO -> "color: black; background: white"
-            LogLevel.WARN -> "color: yellow; background: white"
+            LogLevel.WARN -> "color: yellow; background: black"
             LogLevel.ERROR -> "color: red; background: white"
         }
     )

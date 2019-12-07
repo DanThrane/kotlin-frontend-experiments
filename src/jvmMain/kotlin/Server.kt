@@ -8,12 +8,13 @@ import java.time.*
 import java.util.*
 import kotlin.collections.ArrayList
 
-class HttpClient(
+class HttpClientSession(
     val socketId: String,
     val ins: BufferedInputStream,
     val outs: BufferedOutputStream
 ) {
     var closing: Boolean = false
+    var currentRequestHeader: RequestHeader? = null
 }
 
 enum class HttpMethod {
@@ -21,14 +22,14 @@ enum class HttpMethod {
 }
 
 interface HttpRequestHandler {
-    fun HttpClient.handleRequest(method: HttpMethod, path: String)
+    fun HttpClientSession.handleRequest(method: HttpMethod, path: String)
 }
 
 interface WebSocketRequestHandler {
-    fun HttpClient.handleBinaryFrame(frame: ByteArray) {}
-    fun HttpClient.handleTextFrame(frame: String) {}
-    fun HttpClient.handleNewConnection() {}
-    fun HttpClient.handleClosedConnection() {}
+    fun HttpClientSession.handleBinaryFrame(frame: ByteArray) {}
+    fun HttpClientSession.handleTextFrame(frame: String) {}
+    fun HttpClientSession.handleNewConnection() {}
+    fun HttpClientSession.handleClosedConnection() {}
 }
 
 fun startServer(
@@ -49,7 +50,7 @@ fun startServer(
                     val ins = rawClient.inputStream.buffered()
                     val outs = rawClient.outputStream.buffered()
 
-                    val client = HttpClient(UUID.randomUUID().toString(), ins, outs)
+                    val client = HttpClientSession(UUID.randomUUID().toString(), ins, outs)
 
                     val requestLine = ins.readLine() ?: break
                     val tokens = requestLine.split(" ")
@@ -383,7 +384,7 @@ private inline fun BufferedInputStream.readByteOrThrow(): Int {
 
 val secureRandom = SecureRandom()
 
-fun HttpClient.sendWebsocketFrame(
+fun HttpClientSession.sendWebsocketFrame(
     opcode: WebSocketOpCode,
     payload: ByteArray,
     offset: Int = 0,
@@ -432,7 +433,7 @@ fun HttpClient.sendWebsocketFrame(
     outs.flush()
 }
 
-fun HttpClient.sendHttpResponseWithFile(file: File) {
+fun HttpClientSession.sendHttpResponseWithFile(file: File) {
     sendHttpResponse(
         200,
         defaultHeaders(payloadSize = file.length()) +
@@ -447,7 +448,7 @@ fun HttpClient.sendHttpResponseWithFile(file: File) {
     outs.flush()
 }
 
-fun HttpClient.sendHttpResponse(statusCode: Int, headers: List<Header>) {
+fun HttpClientSession.sendHttpResponse(statusCode: Int, headers: List<Header>) {
     outs.write("HTTP/1.1 $statusCode S$statusCode\r\n".toByteArray())
     headers.forEach { (header, value) ->
         outs.write("$header: $value\r\n".toByteArray())
