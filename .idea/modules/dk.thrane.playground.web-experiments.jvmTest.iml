@@ -6,8 +6,8 @@
         <dependsOnModuleNames>web-experiments_commonTest</dependsOnModuleNames>
         <sourceSets>
           <sourceSet>dk.thrane.playground.web-experiments.jvmMain</sourceSet>
-          <sourceSet>dk.thrane.playground.web-experiments.commonMain</sourceSet>
           <sourceSet>dk.thrane.playground.web-experiments.commonTest</sourceSet>
+          <sourceSet>dk.thrane.playground.web-experiments.commonMain</sourceSet>
         </sourceSets>
         <newMppModelJpsModuleKind>COMPILATION_AND_SOURCE_SET_HOLDER</newMppModelJpsModuleKind>
         <externalSystemTestTasks>jvmTest|web-experiments:jvmTest|jvm</externalSystemTestTasks>

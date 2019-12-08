@@ -6,8 +6,8 @@
         <dependsOnModuleNames>web-experiments_commonTest</dependsOnModuleNames>
         <sourceSets>
           <sourceSet>dk.thrane.playground.web-experiments.jsMain</sourceSet>
-          <sourceSet>dk.thrane.playground.web-experiments.commonMain</sourceSet>
           <sourceSet>dk.thrane.playground.web-experiments.commonTest</sourceSet>
+          <sourceSet>dk.thrane.playground.web-experiments.commonMain</sourceSet>
         </sourceSets>
         <newMppModelJpsModuleKind>COMPILATION_AND_SOURCE_SET_HOLDER</newMppModelJpsModuleKind>
         <externalSystemTestTasks>jsBrowserTest|web-experiments:jsTest|js</externalSystemTestTasks>

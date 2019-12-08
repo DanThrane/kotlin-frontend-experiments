@@ -1,9 +1,6 @@
 package dk.thrane.playground
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.await
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.serialization.protobuf.ProtoBuf
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.ArrayBufferView
@@ -48,7 +45,6 @@ class WSConnection internal constructor(
         socket.addEventListener("message", { e ->
             val frame = Int8Array((e as MessageEvent).data as ArrayBuffer).asByteArray()
 
-            val before = window.performance.now()
             val capturedResponseHandler = currentResponseHeader
             if (capturedResponseHandler == null) {
                 // TODO We need error handling for this
@@ -285,14 +281,16 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
 ): Res {
     return pool.useConnection(vc) { conn ->
         call(conn.copy(authorization = auth), message)
-    }
+    }.await()
 }
 
-@UseExperimental(ExperimentalTime::class)
-suspend fun <Req, Res> RPC<Req, Res>.call(
+fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
     message: Req
-): Res {
+): Deferred<Res> {
+    // This method returns a deferred such that the connection can be returned quickly. We only need the connection
+    // while we are sending data. The connection already handles multiple incoming responses.
+
     val start = window.performance.now()
     console.log("Calling --> ${this.requestName}", message, start)
     val (connection, virtualConnection, auth) = connectionWithAuth
@@ -317,15 +315,18 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
 
         val obj = RequestHeader(virtualConnection.id, requestId, requestName, auth ?: "", true)
 
-        val buffer = ProtoBuf.dump(
-            RequestHeader.serializer(),
-            obj
-        ).unsafeCast<Int8Array>()
-        val buffer1 = ProtoBuf.dump(requestSerializer, message).unsafeCast<Int8Array>()
         connection.send(
-            buffer
+            ProtoBuf.dump(
+                RequestHeader.serializer(),
+                obj
+            ).unsafeCast<Int8Array>()
         )
 
-        connection.send(buffer1)
-    }.await()
+        connection.send(
+            ProtoBuf.dump(
+                requestSerializer,
+                message
+            ).unsafeCast<Int8Array>()
+        )
+    }.asDeferred()
 }

@@ -1,6 +1,9 @@
 package dk.thrane.playground.site
 
 import dk.thrane.playground.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlin.browser.document
 import kotlin.js.Promise
 
@@ -15,5 +18,5 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
 ): Res {
     return connectionPool.useConnection(vc) { conn ->
         call(conn.copy(authorization = AuthenticationStore.token.currentValue), message)
-    }
+    }.await()
 }

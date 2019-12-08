@@ -31,6 +31,7 @@ private val loginBoxStyle = css {
 
     (byTag("input")) {
         borderRadius = 8.px
+        color = Theme.primaryTextColor.toString()
         backgroundColor = Theme.backgroundColor.darken(25).toString()
         border = "0"
         padding = 12.px
@@ -45,6 +46,7 @@ private val loginBoxStyle = css {
 
     (byTag("button")) {
         marginTop = 16.px
+        color = Theme.primaryTextColor.toString()
         backgroundColor = Theme.backgroundColor.darken(25).toString()
         borderRadius = 8.px
         padding = 16.px
