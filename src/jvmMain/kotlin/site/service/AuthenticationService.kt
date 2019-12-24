@@ -1,74 +1,25 @@
 package dk.thrane.playground.site.service
 
-import dk.thrane.playground.MigrationHandler
+import dk.thrane.playground.JWT
+import dk.thrane.playground.JWTAlgorithmAndKey
 import dk.thrane.playground.RPCException
 import dk.thrane.playground.ResponseCode
 import dk.thrane.playground.db.DBConnectionPool
 import dk.thrane.playground.db.SQLRow
-import dk.thrane.playground.db.SQLTable
-import dk.thrane.playground.db.bytea
 import dk.thrane.playground.db.insert
-import dk.thrane.playground.db.long
 import dk.thrane.playground.db.mapTable
 import dk.thrane.playground.db.sendPreparedStatement
 import dk.thrane.playground.db.useTransaction
-import dk.thrane.playground.db.varchar
+import dk.thrane.playground.site.api.JWTClaims
 import dk.thrane.playground.site.api.Principal
 import dk.thrane.playground.site.api.PrincipalRole
+import kotlinx.serialization.json.Json
 import java.security.NoSuchAlgorithmException
 import java.security.SecureRandom
 import java.security.spec.InvalidKeySpecException
 import java.util.*
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
-
-object Principals : SQLTable("principals") {
-    val username = varchar("username", 256)
-    val role = varchar("role", 256)
-    val password = bytea("password")
-    val salt = bytea("salt")
-
-    override fun migration(handler: MigrationHandler) {
-        handler.addScript("principals init") { conn ->
-            conn.sendPreparedStatement(
-                """
-                create table principals(
-                    username varchar(256),
-                    role varchar(256),
-                    password bytea,
-                    salt bytea,
-                    
-                    primary key (username)
-                )
-                """
-            )
-        }
-    }
-}
-
-object Tokens : SQLTable("tokens") {
-    val username = varchar("username", 256)
-    val token = varchar("token", 256)
-    val expiry = long("expiry")
-
-    override fun migration(handler: MigrationHandler) {
-        handler.addScript("initial table") { conn ->
-            conn.sendPreparedStatement(
-                """
-                create table tokens(
-                    username varchar(256),
-                    token varchar(256),
-                    expiry bigint,
-                    
-                    primary key (token),
-                    foreign key (username) references principals(username)
-                )
-                """
-            )
-        }
-    }
-
-}
 
 data class HashedPasswordAndSalt(val password: ByteArray, val salt: ByteArray)
 
@@ -77,7 +28,9 @@ data class LoginResponse(val principal: Principal, val token: String)
 private data class CachedToken(val expiry: Long, val principal: Principal)
 
 class AuthenticationService(
-    private val db: DBConnectionPool
+    private val db: DBConnectionPool,
+    private val jwt: JWT,
+    private val jwtAlgorithmAndKey: JWTAlgorithmAndKey
 ) {
     private val tokenCache = HashMap<String, CachedToken>()
 
@@ -142,7 +95,27 @@ class AuthenticationService(
         }
     }
 
-    suspend fun validateToken(token: String?): Principal? {
+    suspend fun refresh(refreshToken: String): String {
+        val principal = validateRefreshToken(refreshToken) ?: throw RPCException(ResponseCode.FORBIDDEN, "Invalid token")
+        return jwt.create(
+            jwtAlgorithmAndKey,
+            JWTClaims(principal.username, System.currentTimeMillis() + (1_000 * 60 * 15), principal.role),
+            JWTClaims.serializer()
+        )
+    }
+
+    fun validateJWT(jwtToken: String): Principal? {
+        val decodedToken = runCatching {
+            jwt.verify(jwtToken, jwtAlgorithmAndKey)
+        }.getOrNull() ?: return null
+
+        val claims = Json.plain.fromJson(JWTClaims.serializer(), decodedToken.header)
+        if (System.currentTimeMillis() < claims.exp) return null
+
+        return Principal(claims.sub, claims.role)
+    }
+
+    suspend fun validateRefreshToken(token: String?): Principal? {
         if (token == null) return null
 
         val cachedToken = tokenCache[token]
@@ -227,11 +200,11 @@ class AuthenticationService(
 }
 
 suspend fun AuthenticationService.verifyUser(
-    token: String?,
+    jwtToken: String?,
     validRoles: Set<PrincipalRole> = setOf(PrincipalRole.USER, PrincipalRole.ADMIN)
 ): Principal {
-    val capturedToken = token ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
-    val principal = validateToken(capturedToken) ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
+    val capturedToken = jwtToken ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
+    val principal = validateJWT(capturedToken) ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
     if (principal.role !in validRoles) {
         throw RPCException(ResponseCode.FORBIDDEN, "Forbidden")
     }

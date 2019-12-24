@@ -97,7 +97,11 @@ class JWT(private val json: Json, private val base64Encoder: Base64Encoder) {
 
         return decodedJWT
     }
+
+    companion object
 }
+
+expect val JWT.Companion.default: JWT
 
 class JWTVerificationException(message: String) : RuntimeException(message)
 

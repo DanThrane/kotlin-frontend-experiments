@@ -1,11 +1,7 @@
 package dk.thrane.playground.site
 
 import dk.thrane.playground.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlin.browser.document
-import kotlin.js.Promise
 
 val connectionPool = WSConnectionPool("ws://${document.location!!.host}")
 
@@ -17,6 +13,6 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
     vc: VirtualConnection = STATELESS_CONNECTION
 ): Res {
     return connectionPool.useConnection(vc) { conn ->
-        call(conn.copy(authorization = AuthenticationStore.token.currentValue), message)
+        call(conn.copy(authorization = AuthenticationStore.getAccessTokenOrRefresh()), message)
     }.await()
 }

@@ -8,6 +8,7 @@ object Authentication : RPCNamespace("authentication") {
     val login by call(LoginRequest.serializer(), LoginResponse.serializer())
     val logout by call(LogoutRequest.serializer(), EmptyMessage.serializer())
     val whoami by call(EmptyMessage.serializer(), Principal.serializer())
+    val refresh by call(RefreshRequest.serializer(), RefreshResponse.serializer())
 }
 
 @Serializable
@@ -44,3 +45,11 @@ enum class PrincipalRole {
     USER,
     ADMIN
 }
+
+typealias RefreshRequest = RefreshResponse
+
+@Serializable
+data class RefreshResponse(
+    @SerialId(1)
+    val token: String
+)
