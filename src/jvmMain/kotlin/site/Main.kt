@@ -1,27 +1,29 @@
 package dk.thrane.playground.site
 
 import dk.thrane.playground.*
+import dk.thrane.playground.db.DBConnectionPool
+import dk.thrane.playground.db.DatabaseConfig
 import dk.thrane.playground.site.api.PrincipalRole
 import dk.thrane.playground.site.service.*
+import kotlinx.coroutines.runBlocking
 
 class Main(args: Array<String>) : BaseServer() {
     init {
-        val dbPool = DBConnectionPool("org.h2.Driver", "jdbc:h2:mem:data;DB_CLOSE_DELAY=-1")
-
+        val dbPool = DBConnectionPool(DatabaseConfig("kotlin", "kotlin", "kotlin", "localhost"))
         val migrations = MigrationHandler(dbPool)
         Principals.migration(migrations)
         Tokens.migration(migrations)
 
         if ("--migrate" in args || true) {
-            migrations.runMigrations()
+            runBlocking { migrations.runMigrations() }
         }
 
         val authService = AuthenticationService(dbPool)
 
-        authService.createUser(PrincipalRole.ADMIN, "foo", "bar")
+        runBlocking { authService.createUser(PrincipalRole.ADMIN, "foo", "bar") }
 
         repeat(10) {
-            authService.createUser(PrincipalRole.ADMIN, "u$it", "bar")
+            runBlocking { authService.createUser(PrincipalRole.ADMIN, "u$it", "bar") }
         }
 
         addController(AuthenticationController(authService))

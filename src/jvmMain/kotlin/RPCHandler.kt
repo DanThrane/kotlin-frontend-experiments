@@ -21,6 +21,6 @@ fun <Req, Res> RPCHandlerContext<Req, Res>.respond(
     return Pair(code, response)
 }
 
-typealias RPCHandler<Req, Res> = RPCHandlerContext<Req, Res>.() -> Pair<ResponseCode, Res>
-typealias UntypedRPChandler = RPCHandlerContext<*, *>.() -> Pair<ResponseCode, *>
+typealias RPCHandler<Req, Res> = suspend RPCHandlerContext<Req, Res>.() -> Pair<ResponseCode, Res>
+typealias UntypedRPChandler = suspend RPCHandlerContext<*, *>.() -> Pair<ResponseCode, *>
 

@@ -1,9 +1,9 @@
 package dk.thrane.playground
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.File
-import kotlin.collections.ArrayList
 
 sealed class PreHandlerAction {
     object Continue : PreHandlerAction()
@@ -233,7 +233,16 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
             val authorization = header.authorization.takeIf { it.isNotBlank() }
 
             log.info("$rpc requestId=${header.requestId} payload=$payload")
-            val (statusCode, response) = RPCHandlerContextImpl(payload, authorization, socketId, rpc).handler()
+            val (statusCode, response) = runBlocking {
+                handler(
+                    RPCHandlerContextImpl(
+                        payload,
+                        authorization,
+                        socketId,
+                        rpc
+                    )
+                )
+            }
 
             sendMessage(
                 ResponseHeader(header.connectionId, header.requestId, statusCode.statusCode, true),
