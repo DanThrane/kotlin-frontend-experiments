@@ -1,10 +1,29 @@
 package dk.thrane.playground.site
 
-import dk.thrane.playground.*
+import dk.thrane.playground.A
+import dk.thrane.playground.JSBase64Encoder
+import dk.thrane.playground.JWT
+import dk.thrane.playground.Log
+import dk.thrane.playground.backgroundColor
+import dk.thrane.playground.byTag
+import dk.thrane.playground.color
 import dk.thrane.playground.components.FontAwesome
 import dk.thrane.playground.components.reset
 import dk.thrane.playground.components.router
 import dk.thrane.playground.components.toasts
+import dk.thrane.playground.css
+import dk.thrane.playground.display
+import dk.thrane.playground.div
+import dk.thrane.playground.flexDirection
+import dk.thrane.playground.fontFamily
+import dk.thrane.playground.margin
+import dk.thrane.playground.minHeight
+import dk.thrane.playground.padding
+import dk.thrane.playground.px
+import dk.thrane.playground.rawCSS
+import dk.thrane.playground.text
+import dk.thrane.playground.vh
+import kotlinx.serialization.json.Json
 import kotlin.browser.document
 
 private val globalTheme = css {
@@ -25,6 +44,7 @@ private val rootContainer = css {
     minHeight = 100.vh
 }
 
+@UseExperimental(ExperimentalStdlibApi::class)
 fun main() {
     val log = Log("Main")
     rawCSS("@import url('https://fonts.googleapis.com/css?family=Poppins&display=swap');\n")
@@ -71,4 +91,11 @@ fun main() {
             )
         }
     }
+
+    println(
+        JWT(
+            Json.plain,
+            JSBase64Encoder
+        ).validate("eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJqb2UiLCJleHAiOjEzMDA4MTkzODB9.anYbS954igtt3S8YTwz2lqjsUe0FMO1sOCP-UXARa4Y")
+    )
 }
