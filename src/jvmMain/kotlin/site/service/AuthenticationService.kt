@@ -109,8 +109,8 @@ class AuthenticationService(
             jwt.verify(jwtToken, jwtAlgorithmAndKey)
         }.getOrNull() ?: return null
 
-        val claims = Json.plain.fromJson(JWTClaims.serializer(), decodedToken.header)
-        if (System.currentTimeMillis() < claims.exp) return null
+        val claims = Json.plain.fromJson(JWTClaims.serializer(), decodedToken.body)
+        if (System.currentTimeMillis() > claims.exp) return null
 
         return Principal(claims.sub, claims.role)
     }

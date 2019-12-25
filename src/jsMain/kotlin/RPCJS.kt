@@ -301,7 +301,7 @@ fun <Req, Res> RPC<Req, Res>.call(
             val time = window.performance.now() - start
             if (result.isFailure) {
                 val exception = result.exceptionOrNull() as RPCException
-                console.log("[${exception.statusCode}] --> ${this.requestName} ($time ms)", exception)
+                console.log("[${exception.statusCode}] --> ${this.requestName} ($time ms)")
                 reject(exception)
             } else {
                 val responseMessage = result.getOrNull()!!

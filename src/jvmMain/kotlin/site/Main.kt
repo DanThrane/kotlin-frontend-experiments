@@ -18,13 +18,15 @@ class Main(args: Array<String>) : BaseServer() {
             runBlocking { migrations.runMigrations() }
         }
 
-        val authService = AuthenticationService(dbPool)
+        val authService = AuthenticationService(dbPool, JWT.default, HS256WithKey("test"))
 
+        /*
         runBlocking { authService.createUser(PrincipalRole.ADMIN, "foo", "bar") }
 
         repeat(10) {
             runBlocking { authService.createUser(PrincipalRole.ADMIN, "u$it", "bar") }
         }
+         */
 
         addController(AuthenticationController(authService))
     }

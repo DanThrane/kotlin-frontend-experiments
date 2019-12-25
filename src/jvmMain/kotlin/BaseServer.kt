@@ -1,6 +1,5 @@
 package dk.thrane.playground
 
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.File
@@ -10,18 +9,18 @@ sealed class PreHandlerAction {
     class Terminate(val code: ResponseCode) : PreHandlerAction()
 }
 
-typealias PreHandler = HttpClientSession.(
+typealias PreHandler = AsyncHttpClientSession.(
     rpc: RPC<*, *>?,
     header: RequestHeader,
     requestPayload: Any?
 ) -> PreHandlerAction
 
-typealias PostHandler = HttpClientSession.(
+typealias PostHandler = AsyncHttpClientSession.(
     rpc: RPC<*, *>?,
     requestPayload: Any?
 ) -> Unit
 
-abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
+abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandler {
     private val controllers = ArrayList<Controller>()
     private val preHandlers = ArrayList<PreHandler>()
     private val postHandlers = ArrayList<PostHandler>()
@@ -44,7 +43,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         postHandlers.add(handler)
     }
 
-    override fun HttpClientSession.handleRequest(method: HttpMethod, path: String) {
+    override suspend fun AsyncHttpClientSession.handleRequest(method: HttpMethod, path: String) {
         val rootDir = File(".").normalize().absoluteFile
         val rootDirPath = rootDir.absolutePath + "/"
 
@@ -75,7 +74,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         }
     }
 
-    private fun HttpClientSession.handleRequestFrame(frame: ByteArray) {
+    private suspend fun AsyncHttpClientSession.handleRequestFrame(frame: ByteArray) {
         currentRequestHeader = try {
             ProtoBuf.load(RequestHeader.serializer(), frame)
         } catch (ex: Throwable) {
@@ -88,7 +87,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         }
     }
 
-    private fun HttpClientSession.handleRequestBodyFrame(frame: ByteArray?) {
+    private suspend fun AsyncHttpClientSession.handleRequestBodyFrame(frame: ByteArray?) {
         val requestHeader = currentRequestHeader
         requireNotNull(requestHeader)
 
@@ -198,7 +197,7 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         }
     }
 
-    override fun HttpClientSession.handleBinaryFrame(frame: ByteArray) {
+    override suspend fun AsyncHttpClientSession.handleBinaryFrame(frame: ByteArray) {
         if (currentRequestHeader == null) {
             handleRequestFrame(frame)
 
@@ -218,11 +217,11 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
         }
     }
 
-    private fun <T> HttpClientSession.sendMessage(message: T, serializer: KSerializer<T>) {
+    private suspend fun <T> AsyncHttpClientSession.sendMessage(message: T, serializer: KSerializer<T>) {
         sendWebsocketFrame(WebSocketOpCode.BINARY, ProtoBuf.dump(serializer, message))
     }
 
-    private fun <Req, Res> HttpClientSession.handleRPC(
+    private suspend fun <Req, Res> AsyncHttpClientSession.handleRPC(
         header: RequestHeader,
         rpc: RPC<Req, Res>,
         handler: RPCHandler<Req, Res>,
@@ -233,16 +232,14 @@ abstract class BaseServer : HttpRequestHandler, WebSocketRequestHandler {
             val authorization = header.authorization.takeIf { it.isNotBlank() }
 
             log.info("$rpc requestId=${header.requestId} payload=$payload")
-            val (statusCode, response) = runBlocking {
-                handler(
-                    RPCHandlerContextImpl(
-                        payload,
-                        authorization,
-                        socketId,
-                        rpc
-                    )
+            val (statusCode, response) = handler(
+                RPCHandlerContextImpl(
+                    payload,
+                    authorization,
+                    socketId,
+                    rpc
                 )
-            }
+            )
 
             sendMessage(
                 ResponseHeader(header.connectionId, header.requestId, statusCode.statusCode, true),

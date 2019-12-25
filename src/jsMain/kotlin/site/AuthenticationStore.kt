@@ -2,6 +2,7 @@ package dk.thrane.playground.site
 
 import dk.thrane.playground.EmptyMessage
 import dk.thrane.playground.JWT
+import dk.thrane.playground.Log
 import dk.thrane.playground.RPCException
 import dk.thrane.playground.ResponseCode
 import dk.thrane.playground.call
@@ -21,6 +22,8 @@ import kotlin.js.Date
 import kotlin.time.measureTime
 
 object AuthenticationStore {
+    private val log = Log("AuthenticationStore")
+
     private val mutableRefreshToken = BoundData<String?>(null)
     val refreshToken = mutableRefreshToken.asImmutable()
 
@@ -65,9 +68,11 @@ object AuthenticationStore {
         }
 
         if (claims.exp > Date().getTime().toLong()) {
+            log.debug("Need to refresh token")
             return refreshAccessToken()
         }
 
+        log.debug("Using current token: $currentAccessToken")
         return currentAccessToken
     }
 
@@ -84,7 +89,7 @@ object AuthenticationStore {
             )
             .token
             .also { token ->
-                mutableRefreshToken.currentValue = token
+                accessToken = token
             }
     }
 
@@ -100,11 +105,7 @@ object AuthenticationStore {
                 // Note: We might at a later point get a better scope. But for the moment this authentication state
                 // lives for the entire duration of the application.
                 GlobalScope.launch {
-                    val resp = Authentication.whoami.call(
-                        connectionPool,
-                        EmptyMessage,
-                        auth = refreshToken.currentValue
-                    )
+                    val resp = Authentication.whoami.call(EmptyMessage)
                     mutablePrincipal.currentValue = resp
                 }
             }

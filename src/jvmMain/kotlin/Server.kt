@@ -1,17 +1,45 @@
 package dk.thrane.playground
 
-import java.io.*
-import java.net.ServerSocket
+import dk.thrane.playground.io.AsyncByteOutStream
+import dk.thrane.playground.io.AsyncByteStream
+import dk.thrane.playground.io.ByteCollector
+import dk.thrane.playground.io.readByte
+import dk.thrane.playground.io.readFully
+import dk.thrane.playground.io.readUnsignedByte
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.InetSocketAddress
+import java.net.SocketAddress
+import java.nio.ByteBuffer
+import java.nio.channels.AsynchronousServerSocketChannel
+import java.nio.channels.AsynchronousSocketChannel
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.time.*
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.Month
+import java.time.ZoneId
 import java.util.*
 import kotlin.collections.ArrayList
 
-class HttpClientSession(
+private val secureRandom = SecureRandom()
+private val log = Log("Server")
+private val sha1 = MessageDigest.getInstance("SHA-1")
+private const val websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+class AsyncHttpClientSession(
     val socketId: String,
-    val ins: BufferedInputStream,
-    val outs: BufferedOutputStream
+    val ins: AsyncByteStream,
+    val outs: AsyncByteOutStream
 ) {
     var closing: Boolean = false
     var currentRequestHeader: RequestHeader? = null
@@ -21,252 +49,283 @@ enum class HttpMethod {
     GET
 }
 
-interface HttpRequestHandler {
-    fun HttpClientSession.handleRequest(method: HttpMethod, path: String)
+interface AsyncHttpRequestHandler {
+    suspend fun AsyncHttpClientSession.handleRequest(method: HttpMethod, path: String)
 }
 
-interface WebSocketRequestHandler {
-    fun HttpClientSession.handleBinaryFrame(frame: ByteArray) {}
-    fun HttpClientSession.handleTextFrame(frame: String) {}
-    fun HttpClientSession.handleNewConnection() {}
-    fun HttpClientSession.handleClosedConnection() {}
+interface AsyncWebSocketRequestHandler {
+    suspend fun AsyncHttpClientSession.handleBinaryFrame(frame: ByteArray) {}
+    suspend fun AsyncHttpClientSession.handleTextFrame(frame: String) {}
+    suspend fun AsyncHttpClientSession.handleNewConnection() {}
+    suspend fun AsyncHttpClientSession.handleClosedConnection() {}
+}
+
+private suspend fun handleClient(
+    socket: AsynchronousSocketChannel,
+    httpRequestHandler: AsyncHttpRequestHandler? = null,
+    webSocketRequestHandler: AsyncWebSocketRequestHandler? = null
+) {
+    log.debug("Accepting new connection from $socket")
+
+    val ins = run {
+        val readBuffer = ByteBuffer.allocate(1024 * 32)
+        val collector = ByteCollector(1024 * 64)
+
+        AsyncByteStream(
+            collector,
+            readBuffer,
+            readMore = { socket.asyncRead(readBuffer) }
+        )
+    }
+
+    val outs = AsyncByteOutStream(ByteBuffer.allocate(1024 * 32), writeData = { socket.asyncWrite(it) })
+
+    val client = AsyncHttpClientSession(UUID.randomUUID().toString(), ins, outs)
+
+    coroutineScope {
+        while (isActive) {
+            val requestLine = runCatching { ins.readLine() }.getOrNull() ?: break
+            val tokens = requestLine.split(" ")
+            if (tokens.size < 3 || !requestLine.endsWith("HTTP/1.1")) {
+                break
+            }
+
+            val method = tokens.first().toUpperCase()
+            if (method != "GET") {
+                client.sendHttpResponse(405, defaultHeaders())
+                break
+            }
+
+            val path = tokens.getOrNull(1) ?: break
+
+            val requestHeaders = ArrayList<Header>()
+            while (true) {
+                val headerLine = ins.readLine()
+                if (headerLine.isEmpty()) break
+                requestHeaders.add(
+                    Header(
+                        headerLine.substringBefore(':'),
+                        headerLine.substringAfter(':').trim()
+                    )
+                )
+            }
+
+            if (webSocketRequestHandler != null &&
+                requestHeaders.any { it.header.equals("Upgrade", true) && it.value == "websocket" }
+            ) {
+                log.info("WS $path")
+                // The following headers are required to be present
+                val key = requestHeaders.find { it.header.equals("Sec-WebSocket-Key", true) }
+                val origin = requestHeaders.find { it.header.equals("Origin", true) }
+                val version = requestHeaders.find { it.header.equals("Sec-WebSocket-Version", true) }
+
+                if (key == null || origin == null || version == null) {
+                    client.sendHttpResponse(400, defaultHeaders())
+                    break
+                }
+
+                // We only speak WebSocket as defined in RFC 6455
+                if (!version.value.split(",").map { it.trim() }.contains("13")) {
+                    client.sendHttpResponse(
+                        400, defaultHeaders() + listOf(
+                            Header("Sec-WebSocket-Version", "13")
+                        )
+                    )
+                    break
+                }
+
+                val responseHeaders = ArrayList<Header>()
+
+                // Prove to the client that we did in fact receive the request
+                responseHeaders.add(
+                    Header(
+                        "Sec-WebSocket-Accept",
+                        Base64.getEncoder().encodeToString(
+                            sha1.digest((key.value + websocketGuid).toByteArray())
+                        )
+                    )
+                )
+
+                // Yes, we really want to upgrade this connection.
+                responseHeaders.add(Header("Connection", "Upgrade"))
+                responseHeaders.add(Header("Upgrade", "websocket"))
+
+                client.sendHttpResponse(101, defaultHeaders() + responseHeaders)
+
+                // TODO We definitely need fix the GC issues here.
+                val fragmentationBuffer = ByteArray(1024 * 256)
+                var fragmentationPtr = -1
+                var fragmentationOpcode: WebSocketOpCode? = null
+
+                suspend fun handleFrame(fin: Boolean, opcode: WebSocketOpCode?, payload: ByteArray): Boolean {
+                    if (!fin || opcode == WebSocketOpCode.CONTINUATION) {
+                        if (opcode !== WebSocketOpCode.CONTINUATION) {
+                            // First frame has !fin and opcode != CONTINUATION
+                            // Remaining frames will have opcode CONTINUATION
+                            // Last frame will have fin and opcode CONTINUATION
+                            fragmentationPtr = 0
+                            fragmentationOpcode = opcode
+                        }
+
+                        if (fragmentationPtr + payload.size >= fragmentationBuffer.size) {
+                            log.info("Dropping connection. Packet size exceeds limit.")
+                            return true
+                        }
+
+                        System.arraycopy(payload, 0, fragmentationBuffer, fragmentationPtr, payload.size)
+                        fragmentationPtr += payload.size
+
+                        if (!fin) return false
+
+                        val copiedPayload = fragmentationBuffer.copyOf(fragmentationPtr)
+                        val copiedOpcode = fragmentationOpcode
+
+                        fragmentationPtr = -1
+                        fragmentationOpcode = null
+
+                        return handleFrame(true, copiedOpcode, copiedPayload)
+                    }
+
+                    when (opcode) {
+                        WebSocketOpCode.TEXT -> {
+                            with(client) {
+                                with(webSocketRequestHandler) {
+                                    handleTextFrame(payload.toString(Charsets.UTF_8))
+                                }
+                            }
+                        }
+
+                        WebSocketOpCode.BINARY -> {
+                            with(client) {
+                                with(webSocketRequestHandler) {
+                                    handleBinaryFrame(payload)
+                                }
+                            }
+                        }
+
+                        WebSocketOpCode.PING -> {
+                            client.sendWebsocketFrame(
+                                WebSocketOpCode.PONG,
+                                payload
+                            )
+                        }
+
+                        else -> {
+                            log.info("Type: $opcode")
+                            log.info("Raw payload: ${payload.toList()}")
+                        }
+                    }
+                    return false
+                }
+
+                messageLoop@ while (!client.closing) {
+                    val initialByte = ins.readUnsignedByte()
+
+                    val fin = (initialByte and (0x01 shl 7)) != 0
+                    // We don't care about rsv1,2,3
+                    val opcode = WebSocketOpCode.values().find { it.opcode == (initialByte and 0x0F) }
+
+                    val maskAndPayload = ins.readUnsignedByte()
+                    val mask = (maskAndPayload and (0x01 shl 7)) != 0
+                    val payloadLength: Long = run {
+                        val payloadB1 = (maskAndPayload and 0b01111111)
+                        when {
+                            payloadB1 < 126 -> return@run payloadB1.toLong()
+                            payloadB1 == 126 -> {
+                                val b1 = ins.readUnsignedByte()
+                                val b2 = ins.readUnsignedByte()
+
+                                ((b1 shl 8) or (b2)).toLong()
+                            }
+                            payloadB1 == 127 -> {
+                                val buffer = ByteArray(8)
+                                repeat(8) { buffer[it] = ins.readByte() }
+
+                                buffer[0].toLong() shl (64 - 8) or
+                                        (buffer[1].toLong() shl (64 - 8 * 2)) or
+                                        (buffer[2].toLong() shl (64 - 8 * 3)) or
+                                        (buffer[3].toLong() shl (64 - 8 * 4)) or
+                                        (buffer[4].toLong() shl (64 - 8 * 5)) or
+                                        (buffer[5].toLong() shl (64 - 8 * 6)) or
+                                        (buffer[6].toLong() shl (64 - 8 * 7)) or
+                                        (buffer[7].toLong())
+
+                            }
+                            else -> throw IllegalStateException()
+                        }
+                    }
+
+                    val maskingKey = if (mask) {
+                        val buffer = ByteArray(4)
+                        repeat(4) { buffer[it] = ins.readByte() }
+                        buffer
+                    } else {
+                        null
+                    }
+
+                    if (payloadLength > Int.MAX_VALUE) TODO()
+
+                    val payload = ByteArray(payloadLength.toInt())
+                    ins.readFully(payload)
+                    if (maskingKey != null) {
+                        payload.forEachIndexed { index, byte ->
+                            payload[index] = (byte.toInt() xor maskingKey[index % 4].toInt()).toByte()
+                        }
+                    }
+
+                    if (handleFrame(fin, opcode, payload)) {
+                        log.debug("just done")
+                        break@messageLoop
+                    }
+                }
+                log.debug("Done! ${client.closing}")
+            } else {
+                log.info("$method $path")
+
+                if (httpRequestHandler != null) {
+                    with(client) {
+                        with(httpRequestHandler) {
+                            handleRequest(HttpMethod.GET, path)
+                        }
+                    }
+                } else {
+                    client.sendHttpResponse(404, defaultHeaders())
+                }
+            }
+        }
+    }
 }
 
 fun startServer(
-    socket: ServerSocket = ServerSocket(8080, 4096),
-    httpRequestHandler: HttpRequestHandler? = null,
-    webSocketRequestHandler: WebSocketRequestHandler? = null
+    address: SocketAddress = InetSocketAddress(8080),
+    httpRequestHandler: AsyncHttpRequestHandler? = null,
+    webSocketRequestHandler: AsyncWebSocketRequestHandler? = null,
+    wait: Boolean = true
 ) {
-    val log = Log("Server")
-    val sha1 = MessageDigest.getInstance("SHA-1")
-    val websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+    val supervisorJob = SupervisorJob()
+    val acceptScope = CoroutineScope(Dispatchers.Default + supervisorJob)
+    val asyncSocket = AsynchronousServerSocketChannel.open().bind(address)
 
-    log.info("Server is ready at ${socket.inetAddress.hostName}:${socket.localPort}")
-    while (true) {
-        val rawClient = socket.accept()
-        Thread {
-            rawClient.use { rawClient ->
-                while (true) {
-                    val ins = rawClient.inputStream.buffered()
-                    val outs = rawClient.outputStream.buffered()
+    log.info("Server is ready at $address")
+    val job = acceptScope.launch {
+        while (true) {
+            val acceptJob = SupervisorJob()
+            val clientScope = (acceptScope + acceptJob)
 
-                    val client = HttpClientSession(UUID.randomUUID().toString(), ins, outs)
-
-                    val requestLine = ins.readLine() ?: break
-                    val tokens = requestLine.split(" ")
-                    if (tokens.size < 3 || !requestLine.endsWith("HTTP/1.1")) {
-                        break
-                    }
-
-                    val method = tokens.first().toUpperCase()
-                    if (method != "GET") {
-                        client.sendHttpResponse(405, defaultHeaders())
-                        break
-                    }
-
-                    val path = tokens.getOrNull(1) ?: break
-
-                    val requestHeaders = ArrayList<Header>()
-                    while (true) {
-                        val headerLine = ins.readLine() ?: break
-                        if (headerLine.isEmpty()) break
-                        requestHeaders.add(
-                            Header(
-                                headerLine.substringBefore(':'),
-                                headerLine.substringAfter(':').trim()
-                            )
-                        )
-                    }
-
-                    if (webSocketRequestHandler != null &&
-                        requestHeaders.any { it.header.equals("Upgrade", true) && it.value == "websocket" }
-                    ) {
-                        log.info("WS $path")
-                        // The following headers are required to be present
-                        val key = requestHeaders.find { it.header.equals("Sec-WebSocket-Key", true) }
-                        val origin = requestHeaders.find { it.header.equals("Origin", true) }
-                        val version = requestHeaders.find { it.header.equals("Sec-WebSocket-Version", true) }
-
-                        if (key == null || origin == null || version == null) {
-                            client.sendHttpResponse(400, defaultHeaders())
-                            break
-                        }
-
-                        // We only speak WebSocket as defined in RFC 6455
-                        if (!version.value.split(",").map { it.trim() }.contains("13")) {
-                            client.sendHttpResponse(
-                                400, defaultHeaders() + listOf(
-                                    Header("Sec-WebSocket-Version", "13")
-                                )
-                            )
-                            break
-                        }
-
-                        val responseHeaders = ArrayList<Header>()
-
-                        // Prove to the client that we did in fact receive the request
-                        responseHeaders.add(
-                            Header(
-                                "Sec-WebSocket-Accept",
-                                Base64.getEncoder().encodeToString(
-                                    sha1.digest((key.value + websocketGuid).toByteArray())
-                                )
-                            )
-                        )
-
-                        // Yes, we really want to upgrade this connection.
-                        responseHeaders.add(Header("Connection", "Upgrade"))
-                        responseHeaders.add(Header("Upgrade", "websocket"))
-
-                        client.sendHttpResponse(101, defaultHeaders() + responseHeaders)
-
-                        // TODO We definitely need fix the GC issues here.
-                        val fragmentationBuffer = ByteArray(1024 * 256)
-                        var fragmentationPtr = -1
-                        var fragmentationOpcode: WebSocketOpCode? = null
-
-                        fun handleFrame(fin: Boolean, opcode: WebSocketOpCode?, payload: ByteArray): Boolean {
-                            if (!fin || opcode == WebSocketOpCode.CONTINUATION) {
-                                if (opcode !== WebSocketOpCode.CONTINUATION) {
-                                    // First frame has !fin and opcode != CONTINUATION
-                                    // Remaining frames will have opcode CONTINUATION
-                                    // Last frame will have fin and opcode CONTINUATION
-                                    fragmentationPtr = 0
-                                    fragmentationOpcode = opcode
-                                }
-
-                                if (fragmentationPtr + payload.size >= fragmentationBuffer.size) {
-                                    log.info("Dropping connection. Packet size exceeds limit.")
-                                    return true
-                                }
-
-                                System.arraycopy(payload, 0, fragmentationBuffer, fragmentationPtr, payload.size)
-                                fragmentationPtr += payload.size
-
-                                if (!fin) return false
-
-                                val copiedPayload = fragmentationBuffer.copyOf(fragmentationPtr)
-                                val copiedOpcode = fragmentationOpcode
-
-                                fragmentationPtr = -1
-                                fragmentationOpcode = null
-
-                                return handleFrame(true, copiedOpcode, copiedPayload)
-                            }
-
-                            when (opcode) {
-                                WebSocketOpCode.TEXT -> {
-                                    with(client) {
-                                        with(webSocketRequestHandler) {
-                                            handleTextFrame(payload.toString(Charsets.UTF_8))
-                                        }
-                                    }
-                                }
-
-                                WebSocketOpCode.BINARY -> {
-                                    with(client) {
-                                        with(webSocketRequestHandler) {
-                                            handleBinaryFrame(payload)
-                                        }
-                                    }
-                                }
-
-                                WebSocketOpCode.PING -> {
-                                    client.sendWebsocketFrame(
-                                        WebSocketOpCode.PONG,
-                                        payload
-                                    )
-                                }
-
-                                else -> {
-                                    log.info("Type: $opcode")
-                                    log.info("Raw payload: ${payload.toList()}")
-                                }
-                            }
-                            return false
-                        }
-
-                        messageLoop@ while (!client.closing) {
-                            val initialByte = ins.read()
-                            if (initialByte == -1) {
-                                log.debug("No more bytes!")
-                                break
-                            }
-
-                            val fin = (initialByte and (0x01 shl 7)) != 0
-                            // We don't care about rsv1,2,3
-                            val opcode = WebSocketOpCode.values().find { it.opcode == (initialByte and 0x0F) }
-
-                            val maskAndPayload = ins.readByteOrThrow()
-                            val mask = (maskAndPayload and (0x01 shl 7)) != 0
-                            val payloadLength: Long = run {
-                                val payloadB1 = (maskAndPayload and 0b01111111)
-                                when {
-                                    payloadB1 < 126 -> return@run payloadB1.toLong()
-                                    payloadB1 == 126 -> {
-                                        val b1 = ins.readByteOrThrow()
-                                        val b2 = ins.readByteOrThrow()
-
-                                        ((b1 shl 8) or (b2)).toLong()
-                                    }
-                                    payloadB1 == 127 -> {
-                                        val buffer = ByteArray(8)
-                                        repeat(8) { buffer[it] = ins.readByteOrThrow().toByte() }
-
-                                        buffer[0].toLong() shl (64 - 8) or
-                                                (buffer[1].toLong() shl (64 - 8 * 2)) or
-                                                (buffer[2].toLong() shl (64 - 8 * 3)) or
-                                                (buffer[3].toLong() shl (64 - 8 * 4)) or
-                                                (buffer[4].toLong() shl (64 - 8 * 5)) or
-                                                (buffer[5].toLong() shl (64 - 8 * 6)) or
-                                                (buffer[6].toLong() shl (64 - 8 * 7)) or
-                                                (buffer[7].toLong())
-
-                                    }
-                                    else -> throw IllegalStateException()
-                                }
-                            }
-
-                            val maskingKey = if (mask) {
-                                val buffer = ByteArray(4)
-                                repeat(4) { buffer[it] = ins.readByteOrThrow().toByte() }
-                                buffer
-                            } else {
-                                null
-                            }
-
-                            if (payloadLength > Int.MAX_VALUE) TODO()
-
-                            val payload = ByteArray(payloadLength.toInt())
-                            ins.readFully(payload)
-                            if (maskingKey != null) {
-                                payload.forEachIndexed { index, byte ->
-                                    payload[index] = (byte.toInt() xor maskingKey[index % 4].toInt()).toByte()
-                                }
-                            }
-
-                            if (handleFrame(fin, opcode, payload)) {
-                                log.debug("just done")
-                                break@messageLoop
-                            }
-                        }
-                        log.debug("Done! ${client.closing}")
-                    } else {
-                        log.info("$method $path")
-
-                        if (httpRequestHandler != null) {
-                            with(client) {
-                                with(httpRequestHandler) {
-                                    handleRequest(HttpMethod.GET, path)
-                                }
-                            }
-                        } else {
-                            client.sendHttpResponse(404, defaultHeaders())
-                        }
-                    }
-                }
+            val rawClient = asyncSocket.asyncAccept()
+            clientScope.launch {
+                handleClient(rawClient, httpRequestHandler, webSocketRequestHandler)
             }
-        }.start()
+
+            if (!isActive) {
+                acceptJob.cancel()
+                break
+            }
+        }
+    }
+
+    if (wait) {
+        runBlocking { job.join() }
     }
 }
 
@@ -343,48 +402,43 @@ private fun dateHeader(timestamp: Long = System.currentTimeMillis()): Header {
 
 data class Header(val header: String, val value: String)
 
-private fun BufferedInputStream.readLine(): String? {
-    val buffer = ByteArray(4096)
-    var idx = 0
-    while (idx < buffer.size) {
-        val next = read()
-        if (next == -1) return null
+suspend fun AsyncHttpClientSession.sendHttpResponseWithFile(file: File) {
+    sendHttpResponse(
+        200,
+        defaultHeaders(payloadSize = file.length()) +
+                listOf(
+                    Header(
+                        "Content-Type",
+                        mimeTypes["." + file.extension] ?: "text/plain"
+                    )
+                )
+    )
 
-        if (next == '\r'.toInt()) {
-            val after = read()
-            if (after == '\n'.toInt()) {
-                break
-            } else {
-                buffer[idx++] = next.toByte()
-                buffer[idx++] = after.toByte()
-                continue
+    withContext(Dispatchers.IO) {
+        defaultBufferPool.useInstance { buffer ->
+            file.inputStream().use { fIns ->
+                var bytes = fIns.read(buffer)
+                while (bytes >= 0) {
+                    outs.write(buffer, 0, bytes)
+                    bytes = fIns.read(buffer)
+                }
             }
         }
-        if (next == '\n'.toInt()) break
-        buffer[idx++] = next.toByte()
     }
 
-    return String(buffer, 0, idx, Charsets.UTF_8)
+    outs.flush()
 }
 
-private fun BufferedInputStream.readFully(buffer: ByteArray) {
-    var idx = 0
-    while (idx < buffer.size) {
-        val read = read(buffer)
-        if (read == -1) throw IOException("Unexpected EOF")
-        idx += read
+suspend fun AsyncHttpClientSession.sendHttpResponse(statusCode: Int, headers: List<Header>) {
+    outs.write("HTTP/1.1 $statusCode S$statusCode\r\n".toByteArray())
+    headers.forEach { (header, value) ->
+        outs.write("$header: $value\r\n".toByteArray())
     }
+    outs.write("\r\n".toByteArray())
+    outs.flush()
 }
 
-private inline fun BufferedInputStream.readByteOrThrow(): Int {
-    val result = read()
-    if (result == -1) throw IOException("Unexpected EOF")
-    return result
-}
-
-val secureRandom = SecureRandom()
-
-fun HttpClientSession.sendWebsocketFrame(
+suspend fun AsyncHttpClientSession.sendWebsocketFrame(
     opcode: WebSocketOpCode,
     payload: ByteArray,
     offset: Int = 0,
@@ -399,7 +453,7 @@ fun HttpClientSession.sendWebsocketFrame(
         buf
     }
 
-    outs.write((0b1000 shl 4) or opcode.opcode)
+    outs.write(((0b1000 shl 4) or opcode.opcode).toByte())
     val maskBit = if (mask) 0b1 else 0b0
 
     val size = length - offset
@@ -408,19 +462,19 @@ fun HttpClientSession.sendWebsocketFrame(
         size < 65536 -> 126
         else -> 127
     }
-    outs.write((maskBit shl 7) or initialPayloadByte)
+    outs.write(((maskBit shl 7) or initialPayloadByte).toByte())
     if (initialPayloadByte == 126) {
-        outs.write(size shr 8)
-        outs.write(size and 0xFF)
+        outs.write((size shr 8).toByte())
+        outs.write((size and 0xFF).toByte())
     } else if (initialPayloadByte == 127) {
-        outs.write((size shr (64 - 8 * 1)) and 0xFF)
-        outs.write((size shr (64 - 8 * 2)) and 0xFF)
-        outs.write((size shr (64 - 8 * 3)) and 0xFF)
-        outs.write((size shr (64 - 8 * 4)) and 0xFF)
-        outs.write((size shr (64 - 8 * 5)) and 0xFF)
-        outs.write((size shr (64 - 8 * 6)) and 0xFF)
-        outs.write((size shr (64 - 8 * 7)) and 0xFF)
-        outs.write((size shr (64 - 8 * 8)) and 0xFF)
+        outs.write(((size shr (64 - 8 * 1)) and 0xFF).toByte())
+        outs.write(((size shr (64 - 8 * 2)) and 0xFF).toByte())
+        outs.write(((size shr (64 - 8 * 3)) and 0xFF).toByte())
+        outs.write(((size shr (64 - 8 * 4)) and 0xFF).toByte())
+        outs.write(((size shr (64 - 8 * 5)) and 0xFF).toByte())
+        outs.write(((size shr (64 - 8 * 6)) and 0xFF).toByte())
+        outs.write(((size shr (64 - 8 * 7)) and 0xFF).toByte())
+        outs.write(((size shr (64 - 8 * 8)) and 0xFF).toByte())
     }
 
     if (maskingKey != null) {
@@ -432,28 +486,3 @@ fun HttpClientSession.sendWebsocketFrame(
     outs.write(payload, offset, length)
     outs.flush()
 }
-
-fun HttpClientSession.sendHttpResponseWithFile(file: File) {
-    sendHttpResponse(
-        200,
-        defaultHeaders(payloadSize = file.length()) +
-                listOf(
-                    Header(
-                        "Content-Type",
-                        mimeTypes["." + file.extension] ?: "text/plain"
-                    )
-                )
-    )
-    file.inputStream().copyTo(outs)
-    outs.flush()
-}
-
-fun HttpClientSession.sendHttpResponse(statusCode: Int, headers: List<Header>) {
-    outs.write("HTTP/1.1 $statusCode S$statusCode\r\n".toByteArray())
-    headers.forEach { (header, value) ->
-        outs.write("$header: $value\r\n".toByteArray())
-    }
-    outs.write("\r\n".toByteArray())
-    outs.flush()
-}
-

@@ -9,6 +9,7 @@ class ObjectPool<T> @PublishedApi internal constructor(
     private val lock = Object()
     private val instanceLocks = BooleanArray(instances.size) { false }
 
+    // TODO Make suspending
     fun borrowInstance(): Pair<T, Int> {
         synchronized(lock) {
             var firstFree: Int = -1
