@@ -1,4 +1,4 @@
-package dk.thrane.playground
+package dk.thrane.playground.io
 
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousServerSocketChannel

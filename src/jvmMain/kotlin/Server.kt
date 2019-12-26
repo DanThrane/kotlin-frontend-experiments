@@ -1,8 +1,11 @@
 package dk.thrane.playground
 
 import dk.thrane.playground.io.AsyncByteOutStream
-import dk.thrane.playground.io.AsyncByteStream
+import dk.thrane.playground.io.AsyncByteInStream
 import dk.thrane.playground.io.ByteCollector
+import dk.thrane.playground.io.asyncAccept
+import dk.thrane.playground.io.asyncRead
+import dk.thrane.playground.io.asyncWrite
 import dk.thrane.playground.io.readByte
 import dk.thrane.playground.io.readFully
 import dk.thrane.playground.io.readUnsignedByte
@@ -38,7 +41,7 @@ private const val websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 class AsyncHttpClientSession(
     val socketId: String,
-    val ins: AsyncByteStream,
+    val ins: AsyncByteInStream,
     val outs: AsyncByteOutStream
 ) {
     var closing: Boolean = false
@@ -71,7 +74,7 @@ private suspend fun handleClient(
         val readBuffer = ByteBuffer.allocate(1024 * 32)
         val collector = ByteCollector(1024 * 64)
 
-        AsyncByteStream(
+        AsyncByteInStream(
             collector,
             readBuffer,
             readMore = { socket.asyncRead(readBuffer) }
@@ -219,7 +222,7 @@ private suspend fun handleClient(
                 }
 
                 messageLoop@ while (!client.closing) {
-                    val initialByte = ins.readUnsignedByte()
+                    val initialByte = runCatching { ins.readUnsignedByte() }.getOrNull() ?: break
 
                     val fin = (initialByte and (0x01 shl 7)) != 0
                     // We don't care about rsv1,2,3

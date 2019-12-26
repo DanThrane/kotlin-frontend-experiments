@@ -1,5 +1,7 @@
 package dk.thrane.playground
 
+import kotlinx.coroutines.CoroutineScope
+
 object ConnectionController : Controller() {
     private val knownConnections = HashMap<String, Set<Int>>()
 

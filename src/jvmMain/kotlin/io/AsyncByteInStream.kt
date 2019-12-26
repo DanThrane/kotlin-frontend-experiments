@@ -5,7 +5,7 @@ import dk.thrane.playground.defaultBufferPool
 import dk.thrane.playground.useInstance
 import java.nio.ByteBuffer
 
-class AsyncByteStream(
+class AsyncByteInStream(
     private val collector: ByteCollector,
     private val buffer: ByteBuffer,
     private val readMore: suspend () -> Int
