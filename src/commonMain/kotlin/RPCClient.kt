@@ -3,7 +3,6 @@ package dk.thrane.playground
 import kotlinx.serialization.protobuf.ProtoBuf
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
@@ -52,7 +51,7 @@ data class ConnectionWithAuthorization internal constructor(
 expect fun <Req> RPC<Req, *>.logCallStarted(requestMessage: Req)
 
 @UseExperimental(ExperimentalTime::class)
-expect fun <Res> RPC<*, Res>.logCallEnded(exception: RPCException?, response: Res?, duration: Duration)
+expect fun <Res> RPC<*, Res>.logCallEnded(result: Result<Res>, duration: Duration)
 
 @UseExperimental(ExperimentalTime::class)
 suspend fun <Req, Res> RPC<Req, Res>.call(
@@ -93,18 +92,11 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
 
     return suspendCoroutine { cont ->
         handler = { header, result ->
-            val time = start.elapsedNow()
-            if (result.isFailure) {
-                val exception = result.exceptionOrNull() as RPCException
-                logCallEnded(exception, null, time)
-                cont.resumeWithException(exception)
-            } else {
-                val responseMessage = result.getOrNull()!!
-                logCallEnded(null, responseMessage, time)
-                cont.resume(responseMessage)
-            }
-
+            val duration = start.elapsedNow()
+            logCallEnded(result, duration)
             connection.removeSubscription(requestId)
+
+            cont.resumeWith(result)
         }
     }
 }
