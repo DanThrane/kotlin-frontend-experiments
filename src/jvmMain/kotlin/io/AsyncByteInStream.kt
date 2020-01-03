@@ -30,6 +30,7 @@ class AsyncByteInStream(
         destinationOffset: Int = 0,
         maxBytes: Int = destination.size - destinationOffset
     ): Int {
+        log.debug("Initial read call")
         val read = collector.read(destination, destinationOffset, maxBytes)
         if (read > 0) return read
         readAndDeposit()
@@ -38,6 +39,7 @@ class AsyncByteInStream(
 
     private suspend fun readAndDeposit() {
         val read = readMore()
+        log.debug("Read $read bytes")
         if (read == -1) throw IllegalStateException("End of Stream")
         collector.deposit(buffer)
     }

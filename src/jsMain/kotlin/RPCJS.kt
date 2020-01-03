@@ -62,13 +62,15 @@ class JSWSConnection internal constructor(
                     }
 
                     val result = if (statusCode == ResponseCode.OK) {
-                        Result.success(body)
+                        Result.Success(body)
                     } else {
                         @Suppress("ThrowableNotThrown")
-                        Result.failure(RPCException(statusCode, statusCode.name))
+                        Result.Failure<Any?>(RPCException(statusCode, statusCode.name))
                     }
 
-                    handler.handler(newCapturedResponseHandler, result)
+                    GlobalScope.launch {
+                        handler.handler(newCapturedResponseHandler, result)
+                    }
                 } else {
                     log.debug("Couldn't find handler for response!")
                 }
@@ -93,28 +95,30 @@ class JSWSConnection internal constructor(
 
     override fun isOpen(): Boolean = socket.readyState == WebSocket.OPEN
 
-    override suspend fun send(buffer: ByteArray) {
-        socket.send(buffer.unsafeCast<Int8Array>())
+    override suspend fun sendFrames(frames: List<ByteArray>) {
+        frames.forEach { buffer ->
+            socket.send(buffer.unsafeCast<Int8Array>())
+        }
     }
 
-    override fun <Req, Res> addSubscription(
+    override suspend fun <Req, Res> addSubscription(
         requestId: Int,
         rpc: RPC<Req, Res>,
-        handler: (header: ResponseHeader, Result<Res>) -> Unit
+        handler: suspend (header: ResponseHeader, Result<Res>) -> Unit
     ) {
         @Suppress("UNCHECKED_CAST")
         subscriptions[requestId] = MessageSubscription(rpc, handler)
     }
 
-    override fun addOnCloseHandler(handler: suspend () -> Unit) {
-        onCloseHandlers.add(handler)
-    }
-
-    override fun removeSubscription(requestId: Int) {
+    override suspend fun removeSubscription(requestId: Int) {
         subscriptions.remove(requestId)
     }
 
-    override fun removeOnCloseHandler(onClose: suspend () -> Unit) {
+    override suspend fun addOnCloseHandler(handler: suspend () -> Unit) {
+        onCloseHandlers.add(handler)
+    }
+
+    override suspend fun removeOnCloseHandler(onClose: suspend () -> Unit) {
         onCloseHandlers.remove(onClose)
     }
 }

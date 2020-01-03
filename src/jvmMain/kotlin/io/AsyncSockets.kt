@@ -1,5 +1,6 @@
 package dk.thrane.playground.io
 
+import java.net.SocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousServerSocketChannel
 import java.nio.channels.AsynchronousSocketChannel
@@ -44,4 +45,14 @@ suspend fun AsynchronousSocketChannel.asyncWrite(buffer: ByteBuffer) = suspendCo
     })
 }
 
+suspend fun AsynchronousSocketChannel.asyncConnect(socketAddress: SocketAddress) = suspendCoroutine<Unit> { cont ->
+    connect(socketAddress, null, object : CompletionHandler<Void, Nothing?> {
+        override fun completed(result: Void?, attachment: Nothing?) {
+            cont.resume(Unit)
+        }
 
+        override fun failed(exc: Throwable, attachment: Nothing?) {
+            cont.resumeWithException(exc)
+        }
+    })
+}

@@ -3,6 +3,7 @@ package dk.thrane.playground
 import kotlinx.serialization.protobuf.ProtoBuf
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
@@ -10,25 +11,30 @@ import kotlin.time.MonoClock
 
 data class MessageSubscription<Req, Res>(
     val rpc: RPC<Req, Res>,
-    val handler: (header: ResponseHeader, response: Result<Res>) -> Unit
+    val handler: suspend (header: ResponseHeader, response: Result<Res>) -> Unit
 )
+
+sealed class Result<T> {
+    data class Success<T>(val result: T) : Result<T>()
+    data class Failure<T>(val exception: Throwable) : Result<T>()
+}
 
 interface WSConnection {
     suspend fun awaitOpen()
     fun isOpen(): Boolean
 
-    suspend fun send(buffer: ByteArray)
+    suspend fun sendFrames(frames: List<ByteArray>)
 
-    fun <Req, Res> addSubscription(
+    suspend fun <Req, Res> addSubscription(
         requestId: Int,
         rpc: RPC<Req, Res>,
-        handler: (header: ResponseHeader, Result<Res>) -> Unit
+        handler: suspend (header: ResponseHeader, Result<Res>) -> Unit
     )
 
-    fun removeSubscription(requestId: Int)
+    suspend fun removeSubscription(requestId: Int)
 
-    fun addOnCloseHandler(handler: suspend () -> Unit)
-    fun removeOnCloseHandler(onClose: suspend () -> Unit)
+    suspend fun addOnCloseHandler(handler: suspend () -> Unit)
+    suspend fun removeOnCloseHandler(onClose: suspend () -> Unit)
 
     suspend fun retrieveRequestId(): Int
 }
@@ -53,6 +59,8 @@ expect fun <Req> RPC<Req, *>.logCallStarted(requestMessage: Req)
 @UseExperimental(ExperimentalTime::class)
 expect fun <Res> RPC<*, Res>.logCallEnded(result: Result<Res>, duration: Duration)
 
+private val rpcClientLog = Log("RPCCall")
+
 @UseExperimental(ExperimentalTime::class)
 suspend fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
@@ -66,29 +74,32 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
     val (connection, virtualConnection, auth) = connectionWithAuth
     val requestId = connection.retrieveRequestId()
 
-    var handler: ((header: ResponseHeader, Result<Res>) -> Unit)? = null
+    var handler: (suspend (header: ResponseHeader, Result<Res>) -> Unit)? = null
     connection.addSubscription(requestId, this) { header, result ->
+        rpcClientLog.debug("Waiting for handler")
         while (handler == null) {
             // Waiting for handler to be initialized (should be soon)
         }
-
+        rpcClientLog.debug("Handler is ready")
         handler!!(header, result)
+        rpcClientLog.debug("Called handler")
     }
 
+    rpcClientLog.debug("Serializing header and body")
     val obj = RequestHeader(virtualConnection.id, requestId, requestName, auth ?: "", true)
-    connection.send(
+    val frames = listOf(
         ProtoBuf.dump(
             RequestHeader.serializer(),
             obj
-        )
-    )
-
-    connection.send(
+        ),
         ProtoBuf.dump(
             requestSerializer,
             message
         )
     )
+    rpcClientLog.debug("Sending frames")
+    connection.sendFrames(frames)
+    rpcClientLog.debug("Done")
 
     return suspendCoroutine { cont ->
         handler = { header, result ->
@@ -96,7 +107,10 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
             logCallEnded(result, duration)
             connection.removeSubscription(requestId)
 
-            cont.resumeWith(result)
+            when (result) {
+                is Result.Success -> cont.resume(result.result)
+                is Result.Failure -> cont.resumeWithException(result.exception)
+            }
         }
     }
 }

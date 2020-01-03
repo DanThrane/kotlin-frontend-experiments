@@ -9,6 +9,7 @@ import dk.thrane.playground.io.asyncWrite
 import dk.thrane.playground.io.readByte
 import dk.thrane.playground.io.readFully
 import dk.thrane.playground.io.readUnsignedByte
+import jdk.net.ExtendedSocketOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.SocketAddress
+import java.net.StandardSocketOptions
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousServerSocketChannel
 import java.nio.channels.AsynchronousSocketChannel
@@ -34,7 +36,6 @@ import java.time.ZoneId
 import java.util.*
 import kotlin.collections.ArrayList
 
-private val secureRandom = SecureRandom()
 private val log = Log("Server")
 private val sha1 = MessageDigest.getInstance("SHA-1")
 private const val websocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -155,129 +156,34 @@ private suspend fun handleClient(
 
                 client.sendHttpResponse(101, defaultHeaders() + responseHeaders)
 
-                // TODO We definitely need fix the GC issues here.
-                val fragmentationBuffer = ByteArray(1024 * 256)
-                var fragmentationPtr = -1
-                var fragmentationOpcode: WebSocketOpCode? = null
-
-                suspend fun handleFrame(fin: Boolean, opcode: WebSocketOpCode?, payload: ByteArray): Boolean {
-                    if (!fin || opcode == WebSocketOpCode.CONTINUATION) {
-                        if (opcode !== WebSocketOpCode.CONTINUATION) {
-                            // First frame has !fin and opcode != CONTINUATION
-                            // Remaining frames will have opcode CONTINUATION
-                            // Last frame will have fin and opcode CONTINUATION
-                            fragmentationPtr = 0
-                            fragmentationOpcode = opcode
-                        }
-
-                        if (fragmentationPtr + payload.size >= fragmentationBuffer.size) {
-                            log.info("Dropping connection. Packet size exceeds limit.")
-                            return true
-                        }
-
-                        System.arraycopy(payload, 0, fragmentationBuffer, fragmentationPtr, payload.size)
-                        fragmentationPtr += payload.size
-
-                        if (!fin) return false
-
-                        val copiedPayload = fragmentationBuffer.copyOf(fragmentationPtr)
-                        val copiedOpcode = fragmentationOpcode
-
-                        fragmentationPtr = -1
-                        fragmentationOpcode = null
-
-                        return handleFrame(true, copiedOpcode, copiedPayload)
-                    }
-
-                    when (opcode) {
-                        WebSocketOpCode.TEXT -> {
-                            with(client) {
-                                with(webSocketRequestHandler) {
-                                    handleTextFrame(payload.toString(Charsets.UTF_8))
-                                }
+                val frameAssembler = WSFrameAssembler(client, object : WSFrameHandler<AsyncHttpClientSession> {
+                    override suspend fun handleBinaryFrame(session: AsyncHttpClientSession, frame: ByteArray) {
+                        with(session) {
+                            with(webSocketRequestHandler) {
+                                handleBinaryFrame(frame)
                             }
                         }
+                    }
 
-                        WebSocketOpCode.BINARY -> {
-                            with(client) {
-                                with(webSocketRequestHandler) {
-                                    handleBinaryFrame(payload)
-                                }
+                    override suspend fun handleTextFrame(session: AsyncHttpClientSession, frame: String) {
+                        with(session) {
+                            with(webSocketRequestHandler) {
+                                handleTextFrame(frame)
                             }
                         }
-
-                        WebSocketOpCode.PING -> {
-                            client.sendWebsocketFrame(
-                                WebSocketOpCode.PONG,
-                                payload
-                            )
-                        }
-
-                        else -> {
-                            log.info("Type: $opcode")
-                            log.info("Raw payload: ${payload.toList()}")
-                        }
                     }
-                    return false
-                }
+
+                    override suspend fun handlePingFrame(session: AsyncHttpClientSession, frame: ByteArray) {
+                        session.outs.sendWebsocketFrame(WebSocketOpCode.PONG, frame)
+                    }
+
+                    override suspend fun handlePongFrame(session: AsyncHttpClientSession, frame: ByteArray) {
+                        // Do nothing
+                    }
+                })
 
                 messageLoop@ while (!client.closing) {
-                    val initialByte = runCatching { ins.readUnsignedByte() }.getOrNull() ?: break
-
-                    val fin = (initialByte and (0x01 shl 7)) != 0
-                    // We don't care about rsv1,2,3
-                    val opcode = WebSocketOpCode.values().find { it.opcode == (initialByte and 0x0F) }
-
-                    val maskAndPayload = ins.readUnsignedByte()
-                    val mask = (maskAndPayload and (0x01 shl 7)) != 0
-                    val payloadLength: Long = run {
-                        val payloadB1 = (maskAndPayload and 0b01111111)
-                        when {
-                            payloadB1 < 126 -> return@run payloadB1.toLong()
-                            payloadB1 == 126 -> {
-                                val b1 = ins.readUnsignedByte()
-                                val b2 = ins.readUnsignedByte()
-
-                                ((b1 shl 8) or (b2)).toLong()
-                            }
-                            payloadB1 == 127 -> {
-                                val buffer = ByteArray(8)
-                                repeat(8) { buffer[it] = ins.readByte() }
-
-                                buffer[0].toLong() shl (64 - 8) or
-                                        (buffer[1].toLong() shl (64 - 8 * 2)) or
-                                        (buffer[2].toLong() shl (64 - 8 * 3)) or
-                                        (buffer[3].toLong() shl (64 - 8 * 4)) or
-                                        (buffer[4].toLong() shl (64 - 8 * 5)) or
-                                        (buffer[5].toLong() shl (64 - 8 * 6)) or
-                                        (buffer[6].toLong() shl (64 - 8 * 7)) or
-                                        (buffer[7].toLong())
-
-                            }
-                            else -> throw IllegalStateException()
-                        }
-                    }
-
-                    val maskingKey = if (mask) {
-                        val buffer = ByteArray(4)
-                        repeat(4) { buffer[it] = ins.readByte() }
-                        buffer
-                    } else {
-                        null
-                    }
-
-                    if (payloadLength > Int.MAX_VALUE) TODO()
-
-                    val payload = ByteArray(payloadLength.toInt())
-                    ins.readFully(payload)
-                    if (maskingKey != null) {
-                        payload.forEachIndexed { index, byte ->
-                            payload[index] = (byte.toInt() xor maskingKey[index % 4].toInt()).toByte()
-                        }
-                    }
-
-                    if (handleFrame(fin, opcode, payload)) {
-                        log.debug("just done")
+                    if (!frameAssembler.readFrame(client.ins)) {
                         break@messageLoop
                     }
                 }
@@ -316,6 +222,7 @@ fun startServer(
             val clientScope = (acceptScope + acceptJob)
 
             val rawClient = asyncSocket.asyncAccept()
+            rawClient.setOption(StandardSocketOptions.TCP_NODELAY, true)
             clientScope.launch {
                 handleClient(rawClient, httpRequestHandler, webSocketRequestHandler)
             }
@@ -330,15 +237,6 @@ fun startServer(
     if (wait) {
         runBlocking { job.join() }
     }
-}
-
-enum class WebSocketOpCode(val opcode: Int) {
-    CONTINUATION(0x0),
-    TEXT(0x1),
-    BINARY(0x2),
-    CONNECTION_CLOSE(0x8),
-    PING(0x9),
-    PONG(0xA)
 }
 
 fun defaultHeaders(payloadSize: Long = 0): List<Header> = listOf(
@@ -438,54 +336,5 @@ suspend fun AsyncHttpClientSession.sendHttpResponse(statusCode: Int, headers: Li
         outs.write("$header: $value\r\n".toByteArray())
     }
     outs.write("\r\n".toByteArray())
-    outs.flush()
-}
-
-suspend fun AsyncHttpClientSession.sendWebsocketFrame(
-    opcode: WebSocketOpCode,
-    payload: ByteArray,
-    offset: Int = 0,
-    length: Int = payload.size,
-    mask: Boolean = false
-) {
-    val maskingKey = if (!mask) {
-        null
-    } else {
-        val buf = ByteArray(4)
-        secureRandom.nextBytes(buf)
-        buf
-    }
-
-    outs.write(((0b1000 shl 4) or opcode.opcode).toByte())
-    val maskBit = if (mask) 0b1 else 0b0
-
-    val size = length - offset
-    val initialPayloadByte = when {
-        size < 126 -> size
-        size < 65536 -> 126
-        else -> 127
-    }
-    outs.write(((maskBit shl 7) or initialPayloadByte).toByte())
-    if (initialPayloadByte == 126) {
-        outs.write((size shr 8).toByte())
-        outs.write((size and 0xFF).toByte())
-    } else if (initialPayloadByte == 127) {
-        outs.write(((size shr (64 - 8 * 1)) and 0xFF).toByte())
-        outs.write(((size shr (64 - 8 * 2)) and 0xFF).toByte())
-        outs.write(((size shr (64 - 8 * 3)) and 0xFF).toByte())
-        outs.write(((size shr (64 - 8 * 4)) and 0xFF).toByte())
-        outs.write(((size shr (64 - 8 * 5)) and 0xFF).toByte())
-        outs.write(((size shr (64 - 8 * 6)) and 0xFF).toByte())
-        outs.write(((size shr (64 - 8 * 7)) and 0xFF).toByte())
-        outs.write(((size shr (64 - 8 * 8)) and 0xFF).toByte())
-    }
-
-    if (maskingKey != null) {
-        for (index in offset until (offset + length)) {
-            payload[index] = (maskingKey[index % 4].toInt() xor payload[index].toInt()).toByte()
-        }
-    }
-
-    outs.write(payload, offset, length)
     outs.flush()
 }

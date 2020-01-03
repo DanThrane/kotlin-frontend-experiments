@@ -81,7 +81,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
             log.warn("Caught an exception parsing message")
             log.warn(ex.stackTraceToString())
 
-            sendWebsocketFrame(WebSocketOpCode.CONNECTION_CLOSE, ByteArray(0))
+            outs.sendWebsocketFrame(WebSocketOpCode.CONNECTION_CLOSE, ByteArray(0))
             closing = true
             return
         }
@@ -218,7 +218,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
     }
 
     private suspend fun <T> AsyncHttpClientSession.sendMessage(message: T, serializer: KSerializer<T>) {
-        sendWebsocketFrame(WebSocketOpCode.BINARY, ProtoBuf.dump(serializer, message))
+        outs.sendWebsocketFrame(WebSocketOpCode.BINARY, ProtoBuf.dump(serializer, message))
     }
 
     private suspend fun <Req, Res> AsyncHttpClientSession.handleRPC(

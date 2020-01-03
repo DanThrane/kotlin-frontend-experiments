@@ -91,11 +91,4 @@ fun main() {
             )
         }
     }
-
-    println(
-        JWT(
-            Json.plain,
-            JSBase64Encoder
-        ).validate("eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJqb2UiLCJleHAiOjEzMDA4MTkzODB9.anYbS954igtt3S8YTwz2lqjsUe0FMO1sOCP-UXARa4Y")
-    )
 }
