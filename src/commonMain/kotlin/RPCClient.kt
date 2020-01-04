@@ -1,6 +1,6 @@
 package dk.thrane.playground
 
-import kotlinx.serialization.protobuf.ProtoBuf
+import dk.thrane.playground.serialization.MessageFormat
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -66,8 +66,9 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
     message: Req
 ): Res {
-    // This method returns a deferred such that the connection can be returned quickly. We only need the connection
-    // while we are sending data. The connection already handles multiple incoming responses.
+    // TODO:
+    //  This method returns a deferred such that the connection can be returned quickly. We only need the connection
+    //  while we are sending data. The connection already handles multiple incoming responses.
 
     val start = MonoClock.markNow()
     logCallStarted(message)
@@ -86,13 +87,13 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
     }
 
     rpcClientLog.debug("Serializing header and body")
-    val obj = RequestHeader(virtualConnection.id, requestId, requestName, auth ?: "", true)
+    val obj = RequestHeader(virtualConnection.id, requestId, requestName, true, auth)
     val frames = listOf(
-        ProtoBuf.dump(
+        MessageFormat.dump(
             RequestHeader.serializer(),
             obj
         ),
-        ProtoBuf.dump(
+        MessageFormat.dump(
             requestSerializer,
             message
         )

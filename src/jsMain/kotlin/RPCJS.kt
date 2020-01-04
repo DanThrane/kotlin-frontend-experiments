@@ -1,10 +1,10 @@
 package dk.thrane.playground
 
+import dk.thrane.playground.serialization.MessageFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.await
 import kotlinx.coroutines.launch
-import kotlinx.serialization.protobuf.ProtoBuf
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.Int8Array
 import org.w3c.dom.ARRAYBUFFER
@@ -42,7 +42,7 @@ class JSWSConnection internal constructor(
             val capturedResponseHandler = currentResponseHeader
             if (capturedResponseHandler == null) {
                 // TODO We need error handling for this
-                this.currentResponseHeader = ProtoBuf.load(ResponseHeader.serializer(), frame)
+                this.currentResponseHeader = MessageFormat.load(ResponseHeader.serializer(), frame)
             }
 
             val newCapturedResponseHandler = currentResponseHeader
@@ -56,7 +56,7 @@ class JSWSConnection internal constructor(
 
                 if (handler != null) {
                     val body = if (newCapturedResponseHandler.hasBody) {
-                        ProtoBuf.load(handler.rpc.responseSerializer, frame)
+                        MessageFormat.load(handler.rpc.responseSerializer, frame)
                     } else {
                         null
                     }

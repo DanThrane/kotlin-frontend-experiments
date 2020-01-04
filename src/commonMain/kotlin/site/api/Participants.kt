@@ -1,7 +1,6 @@
 package dk.thrane.playground.site.api
 
 import dk.thrane.playground.RPCNamespace
-import kotlinx.serialization.SerialId
 import kotlinx.serialization.Serializable
 
 object Participants : RPCNamespace("participants") {
@@ -21,6 +20,6 @@ data class UpdateParticipationStatus(
 
 @Serializable
 data class EventParticipants(
-    @SerialId(1) val numberOfParticipants: Int,
-    @SerialId(2) val preview: List<String>
+    val numberOfParticipants: Int,
+    val preview: List<String>
 )

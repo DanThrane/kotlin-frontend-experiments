@@ -1,7 +1,6 @@
 package dk.thrane.playground
 
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.SerialId
 import kotlinx.serialization.Serializable
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
@@ -34,13 +33,11 @@ class RPC<Req, Res>(
 
 @Serializable
 data class OpenConnectionSchema(
-    @SerialId(1)
     val id: Int
 )
 
 @Serializable
 class CloseConnectionSchema(
-    @SerialId(1)
     val id: Int
 )
 

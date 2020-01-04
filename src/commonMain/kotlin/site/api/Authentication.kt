@@ -1,7 +1,6 @@
 package dk.thrane.playground.site.api
 
 import dk.thrane.playground.*
-import kotlinx.serialization.SerialId
 import kotlinx.serialization.Serializable
 
 object Authentication : RPCNamespace("authentication") {
@@ -13,31 +12,23 @@ object Authentication : RPCNamespace("authentication") {
 
 @Serializable
 data class LoginRequest(
-    @SerialId(1)
     val username: String,
-
-    @SerialId(2)
     val password: String
 )
 
 @Serializable
 data class LoginResponse(
-    @SerialId(1)
     val token: String
 )
 
 @Serializable
 data class LogoutRequest(
-    @SerialId(1)
     val token: String
 )
 
 @Serializable
 data class Principal(
-    @SerialId(1)
     val username: String,
-
-    @SerialId(2)
     val role: PrincipalRole
 )
 
@@ -50,6 +41,5 @@ typealias RefreshRequest = RefreshResponse
 
 @Serializable
 data class RefreshResponse(
-    @SerialId(1)
     val token: String
 )

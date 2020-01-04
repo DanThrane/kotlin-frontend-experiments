@@ -8,10 +8,10 @@ actual fun <Res> RPC<*, Res>.logCallEnded(
     result: Result<Res>,
     duration: Duration
 ) {
-    if (result.isSuccess) {
-        console.log("<-- OK $requestName ${duration.inMilliseconds}ms", result.getOrNull())
-    } else {
-        val exception = result.exceptionOrNull()
+    if (result is Result.Success) {
+        console.log("<-- OK $requestName ${duration.inMilliseconds}ms", result.result)
+    } else if (result is Result.Failure) {
+        val exception = result.exception
         if (exception is RPCException) {
             console.log("<-- ${exception.statusCode} $requestName ${exception.message} ${duration.inMilliseconds}ms")
         } else {

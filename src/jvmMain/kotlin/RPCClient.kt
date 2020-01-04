@@ -1,9 +1,9 @@
 package dk.thrane.playground
 
+import dk.thrane.playground.serialization.MessageFormat
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.protobuf.ProtoBuf
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
@@ -61,7 +61,7 @@ class JVMWSConnection(
                 val capturedResponseHandler = currentResponseHeader
                 if (capturedResponseHandler == null) {
                     // TODO We need error handling for this
-                    currentResponseHeader = ProtoBuf.load(ResponseHeader.serializer(), frame)
+                    currentResponseHeader = MessageFormat.load(ResponseHeader.serializer(), frame)
                 }
 
                 val newCapturedResponseHandler = currentResponseHeader
@@ -75,7 +75,7 @@ class JVMWSConnection(
 
                     if (handler != null) {
                         val body = if (newCapturedResponseHandler.hasBody) {
-                            ProtoBuf.load(handler.rpc.responseSerializer, frame)
+                            MessageFormat.load(handler.rpc.responseSerializer, frame)
                         } else {
                             null
                         }

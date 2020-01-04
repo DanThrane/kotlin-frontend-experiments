@@ -2,7 +2,6 @@ package dk.thrane.playground.site.api
 
 import dk.thrane.playground.EmptyMessage
 import dk.thrane.playground.RPCNamespace
-import kotlinx.serialization.SerialId
 import kotlinx.serialization.Serializable
 
 object Events : RPCNamespace("events") {
@@ -14,9 +13,9 @@ object Events : RPCNamespace("events") {
 
 @Serializable
 data class CreateEventRequest(
-    @SerialId(1) val title: String,
-    @SerialId(2) val startDate: Long,
-    @SerialId(3) val endDate: Long = -1
+    val title: String,
+    val startDate: Long,
+    val endDate: Long = -1
 )
 
 @Serializable
@@ -24,28 +23,28 @@ data class CreateEventResponse(val eventId: String)
 
 @Serializable
 data class AddOrganizerRequest(
-    @SerialId(1) val eventId: String,
-    @SerialId(2) val organizer: String
+    val eventId: String,
+    val organizer: String
 )
 
 @Serializable
 data class RemoveOrganizerRequest(
-    @SerialId(1) val eventId: String,
-    @SerialId(2) val organizer: String
+    val eventId: String,
+    val organizer: String
 )
 
 @Serializable
 data class Event(
-    @SerialId(1) val eventId: String,
-    @SerialId(2) val organizers: List<String>,
-    @SerialId(3) val title: String,
-    @SerialId(4) val description: String,
-    @SerialId(5) val startDate: Long,
-    @SerialId(6) val endDate: Long = -1
+    val eventId: String,
+    val organizers: List<String>,
+    val title: String,
+    val description: String,
+    val startDate: Long,
+    val endDate: Long = -1
 )
 
 @Serializable
 data class ListOrganizedByMeRequest(
-    @SerialId(1) override val page: Int,
-    @SerialId(2) override val itemsPerPage: Int
+    override val page: Int,
+    override val itemsPerPage: Int
 ) : WithPaginationRequest

@@ -1,8 +1,9 @@
 # TODO
 
-- [ ] Client for JVM
+- [x] Client for JVM
 - [ ] Services as Modules
-- [ ] Custom Format for kx.serialization
+- [x] Custom Format for kx.serialization
 - [x] JWT Authentication
 - [x] Coroutines for Networking
 - [x] Non-blocking Databases
+- [ ] Write our own PostgresSQL library

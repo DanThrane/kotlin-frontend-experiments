@@ -76,7 +76,6 @@ class WSFrameAssembler<Session>(
 
     suspend fun readFrame(ins: AsyncByteInStream): Boolean {
         val initialByte = runCatching { ins.readUnsignedByte() }.getOrNull() ?: return false
-        log.debug("Initial frame byte received!")
 
         val fin = (initialByte and (0x01 shl 7)) != 0
         // We don't care about rsv1,2,3
@@ -120,7 +119,7 @@ class WSFrameAssembler<Session>(
             null
         }
 
-        if (payloadLength > Int.MAX_VALUE) TODO()
+        if (payloadLength > maxPayloadSize) throw IllegalStateException("Too big payload")
 
         val payload = ByteArray(payloadLength.toInt())
         ins.readFully(payload)
@@ -130,19 +129,16 @@ class WSFrameAssembler<Session>(
             }
         }
 
-        log.debug("Last frame byte received!")
-
         if (handleFrame(fin, opcode, payload)) {
             log.debug("just done")
             return false
         }
-
-        log.debug("Frame was handled")
 
         return true
     }
 
     companion object {
         private val log = Log("WSFrameAssembler")
+        private const val maxPayloadSize = 1024 * 512
     }
 }
