@@ -15,6 +15,13 @@ fun InputBuffer.readInt(): Int {
     return (ch1 shl 24) or (ch2 shl 16) or (ch3 shl 8) or (ch4 shl 0)
 }
 
+fun InputBuffer.readShort(): Short {
+    val ch1 = read()
+    val ch2 = read()
+
+    return ((ch1 shl 8) or (ch2 shl 0)).toShort()
+}
+
 fun InputBuffer.readLong(): Long {
     val result = (array[ptr + 0].toLong() shl 56) or
             ((array[ptr + 1].toLong() and 255) shl 48) or
@@ -31,7 +38,7 @@ fun InputBuffer.readLong(): Long {
 expect fun InputBuffer.readDouble(): Double
 
 fun InputBuffer.readFully(destination: ByteArray) {
-    require(ptr + destination.size < array.size) { "Not enough bytes in buffer!" }
+    require(ptr + destination.size <= array.size) { "Not enough bytes in buffer!" }
     array.copyInto(destination, startIndex = ptr, endIndex = ptr + destination.size)
     ptr += destination.size
 }
@@ -61,6 +68,11 @@ fun OutputBuffer.writeInt(v: Int) {
     writeByte(v shr (16) and 0xFF)
     writeByte(v shr (8) and 0xFF)
     writeByte(v shr (0) and 0xFF)
+}
+
+fun OutputBuffer.writeShort(v: Short) {
+    writeByte(v.toInt() shr (8) and 0xFF)
+    writeByte(v.toInt() shr (0) and 0xFF)
 }
 
 fun OutputBuffer.writeLong(v: Long) {

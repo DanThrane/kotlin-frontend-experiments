@@ -56,6 +56,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.3.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-runtime:0.14.0")
                 implementation("com.github.jasync-sql:jasync-postgresql:1.0.12")
+                implementation(kotlin("reflect"))
             }
         }
 

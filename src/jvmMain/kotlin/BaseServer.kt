@@ -229,7 +229,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
     ) {
         val start = System.nanoTime()
         try {
-            val authorization = header.authorization.takeIf { it.isNotBlank() }
+            val authorization = header.authorization.takeIf { !it.isNullOrBlank() }
 
             log.info("$rpc requestId=${header.requestId} payload=$payload")
             val (statusCode, response) = handler(
