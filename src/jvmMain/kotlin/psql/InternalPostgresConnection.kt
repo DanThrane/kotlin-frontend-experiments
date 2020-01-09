@@ -3,6 +3,7 @@ package dk.thrane.playground.psql
 import dk.thrane.playground.Log
 import dk.thrane.playground.io.*
 import dk.thrane.playground.serialization.OutputBuffer
+import dk.thrane.playground.stackTraceToString
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import java.math.BigInteger
 import java.net.InetSocketAddress
 import java.net.StandardSocketOptions
 import java.nio.ByteBuffer
@@ -109,7 +109,8 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
                                 val saltedHash = bytesToHex(md5Digest.digest())
 
                                 session.sendMessage(
-                                    FrontendMessage.Password("md5$saltedHash")
+                                    FrontendMessage.Password("md5$saltedHash"),
+                                    flush = true
                                 )
                             }
                         }
@@ -146,7 +147,8 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
                     }
 
                     is BackendMessage.RowDescription, is BackendMessage.DataRow,
-                    is BackendMessage.EmptyQueryResponse, is BackendMessage.CommandComplete -> {
+                    is BackendMessage.EmptyQueryResponse, is BackendMessage.CommandComplete,
+                    is BackendMessage.ErrorResponse, BackendMessage.ParseComplete -> {
                         ingoingChannel?.send(message)
                     }
 
@@ -158,40 +160,38 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
         }
     }
 
-    suspend fun sendMessage(message: FrontendMessage, awaitReadyForQuery: Boolean = true) {
-        if (awaitReadyForQuery) readyForQuery.acquire()
+    suspend fun sendMessage(message: FrontendMessage, awaitReadyForQuery: Boolean = true, flush: Boolean = false) {
+        // Take the semaphore if we can (because it is ready and needs to be consumed) or wait for it
+        if (!readyForQuery.tryAcquire() && awaitReadyForQuery) readyForQuery.acquire()
         val session = session ?: throw IllegalStateException("Not yet connected")
 
         sendMutex.withLock {
-            session.sendMessage(message)
+            session.sendMessage(message, flush = flush)
         }
     }
 
     @UseExperimental(ExperimentalCoroutinesApi::class)
-    suspend fun sendCommand(message: FrontendMessage, awaitReadyForQuery: Boolean = true): Flow<BackendMessage> {
+    fun sendCommand(message: FrontendMessage, awaitReadyForQuery: Boolean = true): Flow<BackendMessage> {
         return channelFlow {
-            if (awaitReadyForQuery) readyForQuery.acquire()
+            // Take the semaphore if we can (because it is ready and needs to be consumed) or wait for it
+            if (!readyForQuery.tryAcquire() && awaitReadyForQuery) readyForQuery.acquire()
             ingoingChannel = channel
-            sendMessage(message, false)
+            sendMessage(message, false, flush = true)
             awaitClose()
         }
     }
 
-    suspend fun openCommandChannel(): ReceiveChannel<BackendMessage> {
-        ingoingChannelMutex.withLock {
-            require(ingoingChannel == null)
-            val channel = Channel<BackendMessage>()
-            ingoingChannel = channel
-            return channel
-        }
-    }
-
-    private suspend fun Session.sendMessage(message: FrontendMessage) {
+    private suspend fun Session.sendMessage(
+        message: FrontendMessage,
+        flush: Boolean = true
+    ) {
         require(messageOutBuffer.ptr == 0)
         message.serialize(messageOutBuffer)
         outs.write(messageOutBuffer.array, 0, messageOutBuffer.ptr)
-        outs.flush()
         messageOutBuffer.ptr = 0
+        if (flush) {
+            outs.flush()
+        }
     }
 
     private suspend fun Session.readMessage(): BackendMessage {
@@ -210,7 +210,13 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
     companion object {
         private val log = Log("PostgresConnection")
         private val md5Digest = MessageDigest.getInstance("MD5")!!
-
-
     }
+}
+
+suspend fun InternalPostgresConnection.sendMessageNow(message: FrontendMessage, flush: Boolean = false) {
+    sendMessage(message, awaitReadyForQuery = false, flush = flush)
+}
+
+fun InternalPostgresConnection.sendCommandNow(message: FrontendMessage): Flow<BackendMessage> {
+    return sendCommand(message, awaitReadyForQuery = false)
 }

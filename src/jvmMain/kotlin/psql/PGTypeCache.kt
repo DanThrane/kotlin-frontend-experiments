@@ -49,6 +49,7 @@ class PGTypeCache {
 
     fun lookupTypeByOid(oid: Int): PGType<*>? = typeCache[oid]?.toPGType()
     fun lookupTypeByName(name: String): PGType<*>? = typeCacheByName[name]?.toPGType()
+    fun lookupTypeOidByName(name: String): Int? = typeCacheByName[name]?.oid
 
     companion object {
    }

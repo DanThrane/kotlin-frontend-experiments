@@ -147,6 +147,12 @@ sealed class BackendMessage(val type: Byte) {
         }
     }
 
+    data class ErrorResponse(val fields: List<Pair<Byte, String>>) : BackendMessage(Type) {
+        companion object {
+            const val Type = 'E'.toByte()
+        }
+    }
+
     companion object {
         private val log = Log("PSQLMessage")
         private val allowedPacketSize = 0..(1024 * 1024 * 8)
@@ -154,7 +160,7 @@ sealed class BackendMessage(val type: Byte) {
         suspend fun readMessage(ins: AsyncByteInStream): BackendMessage? {
             val type = ins.readByte()
             val length = ins.readInt() - 4
-            if (length !in allowedPacketSize) throw IOException("Bad packet")
+            if (length !in allowedPacketSize) throw IOException("Packet too large: $length.")
             val payload = ByteArray(length)
             ins.readFully(payload)
             val inputBuffer = InputBuffer(payload)
@@ -268,6 +274,20 @@ sealed class BackendMessage(val type: Byte) {
                 BackendKeyData.Type -> {
                     BackendKeyData(inputBuffer.readInt(), inputBuffer.readInt())
                 }
+
+                ErrorResponse.Type -> {
+                    val fields = ArrayList<Pair<Byte, String>>()
+                    while (true) {
+                        val fieldType = inputBuffer.read().toByte()
+                        if (fieldType == 0.toByte()) break
+                        val message = readString(inputBuffer)
+                        Pair(fieldType, message)
+                    }
+
+                    ErrorResponse(fields)
+                }
+
+                50.toByte() -> null
 
                 else -> {
                     log.warn("Unimplemented message type: $type")

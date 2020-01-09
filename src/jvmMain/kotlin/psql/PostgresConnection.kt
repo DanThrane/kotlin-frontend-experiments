@@ -1,157 +1,231 @@
 package dk.thrane.playground.psql
 
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.mapNotNull
-import kotlinx.coroutines.flow.toList
+import dk.thrane.playground.Log
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.*
-import kotlinx.serialization.internal.nullable
-import kotlinx.serialization.modules.EmptyModule
-import kotlinx.serialization.modules.SerialModule
 import java.math.BigDecimal
+import kotlin.time.ExperimentalTime
+import kotlin.time.measureTime
 
 class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
     private val conn = InternalPostgresConnection(connectionParameters)
     private val typeCache = PGTypeCache()
+    private val preparedStatementCache = PreparedStatementCache()
 
     suspend fun open() {
         conn.open()
         typeCache.refreshTypeCache(conn)
     }
 
-    suspend fun sendQuery(query: String): Flow<DBRow> {
-        var rowDescription: List<ColumnDefinition<*>>? = null
-        var commandIndex = -1
-
+    fun sendQuery(query: String): Flow<DBRow> {
         return conn
             .sendCommand(FrontendMessage.Query(query))
-            .mapNotNull { message ->
-                when (message) {
-                    is BackendMessage.RowDescription -> {
-                        commandIndex++
-                        rowDescription = message.fields.map { field ->
-                            val type = typeCache.lookupTypeByOid(field.typeObjectId)
-                                ?: PGType.Unknown(field.typeObjectId.toString())
-                            val name = field.name
+            .mapToDbRow()
+    }
 
-                            ColumnDefinition(name, type)
+    @UseExperimental(ExperimentalCoroutinesApi::class)
+    fun sendPreparedStatement(
+        statement: String,
+        header: List<PGType<*>>,
+        values: Flow<List<Any?>>,
+        flushRate: Int = 50
+    ): Flow<DBRow> {
+        return flow {
+            val (psName, newStatement) = preparedStatementCache.getOrAllocateStatementName(statement)
+            val headerSize = header.size
+            if (newStatement) {
+                val typeOids = header.map {
+                    typeCache.lookupTypeOidByName(it.typeName)
+                        ?: throw IllegalArgumentException("Unknown type oid for: $it")
+                }.toIntArray()
+
+                conn.sendMessage(FrontendMessage.Parse(psName, statement, typeOids))
+            }
+
+            var rowIdx = 0
+            var startOfLastChunk = 0
+            values.collect { row ->
+                if (row.size != headerSize) throw IllegalArgumentException("Bad number of columns in row: $row")
+                if (startOfLastChunk == rowIdx - 1) {
+                    // New chunk has just begun
+                    conn.sendMessageNow(
+                        FrontendMessage.Describe(FrontendMessage.CloseTarget.PREPARED_STATEMENT, psName)
+                    )
+                }
+
+                val serialized = row.mapIndexed { colIdx, col ->
+                    val textual: String? = when (header[colIdx]) {
+                        PGType.Int2, PGType.Int4, PGType.Int8 -> col?.toString()
+                        PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml -> col?.toString()
+                        PGType.Bool -> (col as Boolean?)?.toString()
+                        PGType.Float4, PGType.Float8, PGType.Numeric -> col?.toString()
+                        PGType.Char -> col?.toString()
+                        PGType.Bytea -> {
+                            val value = col as ByteArray?
+                            if (value == null) null
+                            else "\\x" + bytesToHex(value)
                         }
-
-                        null
+                        PGType.Void, is PGType.Unknown -> throw NotImplementedError("Unknown type")
                     }
 
-                    is BackendMessage.DataRow -> {
-                        val description = rowDescription
-                        check(description != null) { "Row description is null" }
-                        val row = MutableDBRow(description.size)
+                    textual?.toByteArray(Charsets.UTF_8)
+                }.toTypedArray()
 
-                        val stringColumns = message.columns.map {
-                            if (it is BackendMessage.Column.Data) String(it.bytes, Charsets.UTF_8)
-                            else null
-                        }
+                conn.sendMessageNow(FrontendMessage.Bind("$rowIdx", psName, ShortArray(0), serialized, ShortArray(0)))
+                conn.sendMessageNow(FrontendMessage.Execute("$rowIdx", 0))
 
-                        description.forEachIndexed { index, (name, type) ->
-                            val column: Column<*> = when (type) {
-                                PGType.Int2 -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Int2),
-                                        commandIndex,
-                                        stringColumns[index]?.toShort()
-                                    )
-                                }
+                if (rowIdx % flushRate == 0 && rowIdx != 0) {
+                    // TODO This will suspend until the rows have been processed by the DB and the user
+                    // Using a channelFlow instead means we can continue to send more queries to the DB while it is
+                    // being processed.
+                    emitAll(conn.sendCommandNow(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
+                    startOfLastChunk = rowIdx
+                }
 
-                                PGType.Int4 -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Int4),
-                                        commandIndex,
-                                        stringColumns[index]?.toInt()
-                                    )
-                                }
+                rowIdx++
+            }
 
-                                PGType.Int8 -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Int8),
-                                        commandIndex,
-                                        stringColumns[index]?.toLong()
-                                    )
-                                }
+            if (startOfLastChunk != rowIdx - 1) {
+                emitAll(conn.sendCommandNow(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
+            }
+        }
+    }
 
-                                PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml, is PGType.Unknown -> {
-                                    Column(
-                                        @Suppress("UNCHECKED_CAST")
-                                        ColumnDefinition(name, type as PGType<String>),
-                                        commandIndex,
-                                        stringColumns[index]
-                                    )
-                                }
+    private fun Flow<BackendMessage>.mapToDbRow(offset: Int = 0): Flow<DBRow> {
+        var rowDescription: List<ColumnDefinition<*>>? = null
+        var commandIndex = -1 + offset
+        return mapNotNull { message ->
+            when (message) {
+                is BackendMessage.RowDescription -> {
+                    commandIndex++
+                    rowDescription = message.fields.map { field ->
+                        val type = typeCache.lookupTypeByOid(field.typeObjectId)
+                            ?: PGType.Unknown(field.typeObjectId.toString())
+                        val name = field.name
 
-                                PGType.Void -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Void),
-                                        commandIndex,
-                                        Unit
-                                    )
-                                }
+                        ColumnDefinition(name, type)
+                    }
 
-                                PGType.Bool -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Bool),
-                                        commandIndex,
-                                        stringColumns[index]?.equals("true", ignoreCase = true)
-                                    )
-                                }
+                    null
+                }
 
-                                PGType.Float4 -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Float4),
-                                        commandIndex,
-                                        stringColumns[index]?.toFloat()
-                                    )
-                                }
+                is BackendMessage.DataRow -> {
+                    val description = rowDescription
+                    check(description != null) { "Row description is null" }
+                    val row = MutableDBRow(description.size)
 
-                                PGType.Float8 -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Float8),
-                                        commandIndex,
-                                        stringColumns[index]?.toDouble()
-                                    )
-                                }
+                    val stringColumns = message.columns.map {
+                        if (it is BackendMessage.Column.Data) String(it.bytes, Charsets.UTF_8)
+                        else null
+                    }
 
-                                PGType.Numeric -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Numeric),
-                                        commandIndex,
-                                        stringColumns[index]?.let { BigDecimal(it) }
-                                    )
-                                }
-
-                                PGType.Char -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Char),
-                                        commandIndex,
-                                        stringColumns[index]?.first()
-                                    )
-                                }
-
-                                PGType.Bytea -> {
-                                    Column(
-                                        ColumnDefinition(name, PGType.Bytea),
-                                        commandIndex,
-                                        stringColumns[index]?.let { hexToBytes(it.substring(2)) }
-                                    )
-                                }
+                    description.forEachIndexed { index, (name, type) ->
+                        val column: Column<*> = when (type) {
+                            PGType.Int2 -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Int2),
+                                    stringColumns[index]?.toShort(),
+                                    commandIndex
+                                )
                             }
 
-                            row[index] = column
+                            PGType.Int4 -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Int4),
+                                    stringColumns[index]?.toInt(),
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Int8 -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Int8),
+                                    stringColumns[index]?.toLong(),
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml, is PGType.Unknown -> {
+                                Column(
+                                    @Suppress("UNCHECKED_CAST")
+                                    ColumnDefinition(name, type as PGType<String>),
+                                    stringColumns[index],
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Void -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Void),
+                                    Unit,
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Bool -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Bool),
+                                    stringColumns[index]?.equals("true", ignoreCase = true),
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Float4 -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Float4),
+                                    stringColumns[index]?.toFloat(),
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Float8 -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Float8),
+                                    stringColumns[index]?.toDouble(),
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Numeric -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Numeric),
+                                    stringColumns[index]?.let { BigDecimal(it) },
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Char -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Char),
+                                    stringColumns[index]?.first(),
+                                    commandIndex
+                                )
+                            }
+
+                            PGType.Bytea -> {
+                                Column(
+                                    ColumnDefinition(name, PGType.Bytea),
+                                    stringColumns[index]?.let { hexToBytes(it.substring(2)) },
+                                    commandIndex
+                                )
+                            }
                         }
 
-                        row
+                        row[index] = column
                     }
 
-                    else -> null
+                    row
                 }
+
+                else -> null
             }
+        }
+    }
+
+    companion object {
+        private val log = Log("PostgresConnection")
     }
 }
 
@@ -192,7 +266,15 @@ private class MutableDBRow(override val size: Int) : DBRow {
 }
 
 data class ColumnDefinition<KtType>(val name: String, val type: PGType<KtType>)
-data class Column<KtType>(val definition: ColumnDefinition<KtType>, val commandIndex: Int, val value: KtType?)
+data class Column<KtType>(
+    val definition: ColumnDefinition<KtType>,
+    val value: KtType?,
+    val commandIndex: Int = -1
+)
+
+@Suppress("FunctionName")
+fun <KtType> AnonymousColumn(type: PGType<KtType>, value: KtType?): Column<KtType> =
+    Column(ColumnDefinition("", type), value, 0)
 
 sealed class PGType<KtType>(val typeName: String) {
     override fun toString() = typeName
@@ -214,7 +296,6 @@ sealed class PGType<KtType>(val typeName: String) {
 
     /*
         const val money = "money"
-        const val bytea = "bytea"
         const val date = "date"
         const val time = "time"
         const val timestamp = "timestamp"
@@ -229,10 +310,15 @@ sealed class PGType<KtType>(val typeName: String) {
     }
 }
 
+suspend fun PostgresConnection.sendPreparedStatement(statement: String, values: List<Column<*>>): Flow<DBRow> {
+    return sendPreparedStatement(statement, values.map { it.definition.type }, flowOf(values.map { it.value }))
+}
+
 @Serializable
 data class DeadBeef(val foobar: ByteArray)
 
-fun main() {
+@UseExperimental(ExperimentalTime::class)
+suspend fun main() {
     val connection = PostgresConnection(
         PostgresConnectionParameters(
             username = "kotlin",
@@ -244,13 +330,29 @@ fun main() {
 
     val serializer = DeadBeef.serializer()
 
-    runBlocking {
-        connection.open()
-        println(
-            connection
-                .sendQuery("SELECT E'\\\\xDEADBEEF'::bytea as foobar;")
-                .mapRows(DeadBeef.serializer())
-                .toList()
-        )
+    connection.open()
+    /*
+    println(
+        connection
+            .sendQuery("SELECT E'\\\\xDEADBEEF'::bytea as foobar;")
+            .mapRows(DeadBeef.serializer())
+            .toList()
+    )
+     */
+
+    connection.sendQuery("create table if not exists foo(bar int4)").collect()
+
+    val time = measureTime {
+        var complete = 0
+        connection.sendPreparedStatement(
+            "insert into foo(bar) values($1)",
+            listOf(PGType.Int4),
+            (0..100_000).asFlow().map { listOf(it) },
+            flushRate = 1500
+        ).collect {
+            complete++
+            println("Hi!")
+        }
     }
+    println("Insertion took $time")
 }
