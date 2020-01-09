@@ -22,12 +22,12 @@ class ByteCollector(public val maxCapacity: Int) {
             mutex.withLock {
                 val internalCapacity = internalArray.size - writePointer
                 if (internalCapacity < bytesToCopy) {
-                    val internalCapacityAfterMove = internalCapacity + readPointer
+                    val bytesNotYetConsumed = writePointer - readPointer
+                    val internalCapacityAfterMove = internalArray.size - (bytesNotYetConsumed + bytesToCopy)
                     require(internalCapacityAfterMove > bytesToCopy)
-                    val newWritePointer = internalArray.size - readPointer
-                    System.arraycopy(internalArray, readPointer, internalArray, 0, newWritePointer)
+                    System.arraycopy(internalArray, readPointer, internalArray, 0, bytesNotYetConsumed)
 
-                    writePointer = newWritePointer
+                    writePointer = bytesNotYetConsumed
                     readPointer = 0
                 }
 
