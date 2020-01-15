@@ -56,12 +56,10 @@ data class ConnectionWithAuthorization internal constructor(
 
 expect fun <Req> RPC<Req, *>.logCallStarted(requestMessage: Req)
 
-@UseExperimental(ExperimentalTime::class)
 expect fun <Res> RPC<*, Res>.logCallEnded(result: Result<Res>, duration: Duration)
 
 private val rpcClientLog = Log("RPCCall")
 
-@UseExperimental(ExperimentalTime::class)
 suspend fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
     message: Req

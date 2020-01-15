@@ -2,7 +2,7 @@ package dk.thrane.playground.psql
 
 private val HEX_ARRAY = "0123456789abcdef".toCharArray()
 
-fun bytesToHex(bytes: ByteArray): String {
+internal fun bytesToHex(bytes: ByteArray): String {
     val hexChars = CharArray(bytes.size * 2)
     for (j in bytes.indices) {
         val v: Int = bytes[j].toInt() and 0xFF
@@ -12,7 +12,7 @@ fun bytesToHex(bytes: ByteArray): String {
     return String(hexChars)
 }
 
-fun hexToBytes(hexString: String): ByteArray {
+internal fun hexToBytes(hexString: String): ByteArray {
     val output = ByteArray(hexString.length / 2)
     for (i in output.indices) {
         val first = hexString[i * 2].toByte()

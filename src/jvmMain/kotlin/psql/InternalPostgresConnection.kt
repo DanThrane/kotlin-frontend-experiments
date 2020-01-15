@@ -29,7 +29,7 @@ data class PostgresConnectionParameters(
     val options: Map<String, String> = emptyMap()
 )
 
-class InternalPostgresConnection(private val connectionParameters: PostgresConnectionParameters) {
+internal class InternalPostgresConnection(private val connectionParameters: PostgresConnectionParameters) {
     // Session related values
     private var currentJob: Job? = null
     private var session: Session? = null
@@ -173,7 +173,6 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
         }
     }
 
-    @UseExperimental(ExperimentalCoroutinesApi::class)
     fun sendCommand(message: FrontendMessage, awaitReadyForQuery: Boolean = true): Flow<BackendMessage> {
         return channelFlow {
             // Take the semaphore if we can (because it is ready and needs to be consumed) or wait for it
@@ -216,10 +215,10 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
     }
 }
 
-suspend fun InternalPostgresConnection.sendMessageNow(message: FrontendMessage, flush: Boolean = false) {
+internal suspend fun InternalPostgresConnection.sendMessageNow(message: FrontendMessage, flush: Boolean = false) {
     sendMessage(message, awaitReadyForQuery = false, flush = flush)
 }
 
-fun InternalPostgresConnection.sendCommandNow(message: FrontendMessage): Flow<BackendMessage> {
+internal fun InternalPostgresConnection.sendCommandNow(message: FrontendMessage): Flow<BackendMessage> {
     return sendCommand(message, awaitReadyForQuery = false)
 }

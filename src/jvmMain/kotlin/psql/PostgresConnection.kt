@@ -5,6 +5,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.*
 import java.math.BigDecimal
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.ExperimentalTime
 
 data class PreparedStatementId(val id: String, val header: List<PGType<*>>)
@@ -12,7 +13,8 @@ data class PreparedStatementId(val id: String, val header: List<PGType<*>>)
 class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
     private val conn = InternalPostgresConnection(connectionParameters)
     private val typeCache = PGTypeCache()
-    private val preparedStatementCache = PreparedStatementCache()
+    private val connectionId = connectionIdAllocator.getAndIncrement()
+    private val preparedStatementCache = PreparedStatementCache(connectionId)
 
     suspend fun open() {
         conn.open()
@@ -53,7 +55,6 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
      *
      * Once every [flushRate] commands the database will be asked to execute the statements
      */
-    @UseExperimental(ExperimentalCoroutinesApi::class)
     fun invokePreparedStatement(
         statement: PreparedStatementId,
         values: Flow<List<Any?>>,
@@ -130,7 +131,6 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
         conn.sendMessageNow(FrontendMessage.Close(FrontendMessage.CloseTarget.PREPARED_STATEMENT, id.id))
     }
 
-
     private fun Flow<BackendMessage>.mapToDbRow(offset: Int = 0): Flow<DBRow> {
         var rowDescription: List<ColumnDefinition<*>>? = null
         var commandIndex = -1 + offset
@@ -192,7 +192,10 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                             PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml, is PGType.Unknown -> {
                                 Column(
                                     @Suppress("UNCHECKED_CAST")
-                                    ColumnDefinition(name, type as PGType<String>),
+                                    (ColumnDefinition(
+                                        name,
+                                        type as PGType<String>
+                                    )),
                                     stringColumns[index],
                                     commandIndex
                                 )
@@ -266,111 +269,31 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
         }
     }
 
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as PostgresConnection
+
+        if (connectionId != other.connectionId) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        return connectionId
+    }
+
     companion object {
         private val log = Log("PostgresConnection")
-    }
-}
 
-interface DBRow {
-    val size: Int
-    val columnDefinitions: Array<ColumnDefinition<*>>
-    fun getUntyped(index: Int): Any?
-    fun getUntypedByName(name: String, fallbackIndex: Int? = null): Any?
-    operator fun <KtType> get(index: Int, columnDefinition: ColumnDefinition<KtType>): KtType?
-    operator fun <KtType> get(index: Int, columnDefinition: PGType<KtType>): KtType?
-}
-
-private class MutableDBRow(override val size: Int) : DBRow {
-    private val columns = arrayOfNulls<Column<*>>(size)
-    private val internalColumnDefinitions = arrayOfNulls<ColumnDefinition<*>>(size)
-
-    @Suppress("UNCHECKED_CAST")
-    override val columnDefinitions: Array<ColumnDefinition<*>>
-        get() = internalColumnDefinitions as Array<ColumnDefinition<*>>
-
-    operator fun <KtType> set(index: Int, column: Column<KtType>) {
-        columns[index] = column
-        internalColumnDefinitions[index] = column.definition
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    override fun getUntyped(index: Int): Any? = columns[index]?.value
-
-    @Suppress("UNCHECKED_CAST")
-    override fun <KtType> get(index: Int, columnDefinition: ColumnDefinition<KtType>): KtType? {
-        return (getUntyped(index) as KtType?)
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    override fun <KtType> get(index: Int, columnDefinition: PGType<KtType>): KtType? {
-        return (getUntyped(index) as KtType)
-    }
-
-    override fun getUntypedByName(name: String, fallbackIndex: Int?): Any? {
-        val colIndex = columnDefinitions.indexOfFirst { it.name == name }.takeIf { it != -1 } ?: fallbackIndex
-
-        if (colIndex == null || colIndex !in columnDefinitions.indices) {
-            throw IllegalArgumentException(
-                "Unknown column '$name'. " +
-                        "Anonymous fallback: $fallbackIndex). " +
-                        "Known columns: ${columnDefinitions.toList()}"
-            )
-        }
-
-        return getUntyped(colIndex)
-    }
-
-    override fun toString(): String = "DBRow(" + columns.toList() + ")"
-}
-
-data class ColumnDefinition<KtType>(val name: String, val type: PGType<KtType>)
-data class Column<KtType>(
-    val definition: ColumnDefinition<KtType>,
-    val value: KtType?,
-    val commandIndex: Int = -1
-)
-
-@Suppress("FunctionName")
-fun <KtType> AnonymousColumn(type: PGType<KtType>, value: KtType?): Column<KtType> =
-    Column(ColumnDefinition("", type), value, 0)
-
-sealed class PGType<KtType>(val typeName: String) {
-    override fun toString() = typeName
-
-    object Int2 : PGType<Short>("int2")
-    object Int4 : PGType<Int>("int4")
-    object Int8 : PGType<Long>("int8")
-    object Text : PGType<String>("text")
-    object Json : PGType<String>("json")
-    object Jsonb : PGType<String>("jsonb")
-    object Void : PGType<Unit>("void")
-    object Xml : PGType<String>("xml")
-    object Bool : PGType<Boolean>("bool")
-    object Float4 : PGType<Float>("float4")
-    object Float8 : PGType<Double>("float8")
-    object Numeric : PGType<BigDecimal>("numeric")
-    object Char : PGType<kotlin.Char>("char")
-    object Bytea : PGType<ByteArray>("bytea")
-
-    /*
-        const val money = "money"
-        const val date = "date"
-        const val time = "time"
-        const val timestamp = "timestamp"
-        const val void = "void"
-        const val uuid = "uuid"
-        const val any = "any"
-     */
-
-    class Unknown(typeName: String) : PGType<String>(typeName) {
-        override fun toString(): String = "Unknown($typeName)"
+        private val connectionIdAllocator = AtomicInteger(0)
     }
 }
 
 @Serializable
 data class DeadBeef(val foobar: ByteArray)
 
-@UseExperimental(ExperimentalTime::class)
 suspend fun main() {
     val connection = PostgresConnection(
         PostgresConnectionParameters(

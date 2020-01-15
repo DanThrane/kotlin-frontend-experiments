@@ -80,7 +80,6 @@ class MessageFormat(
             fieldBuilder[tag] = ByteField(value)
         }
 
-        @UseExperimental(ExperimentalStdlibApi::class)
         override fun encodeTaggedChar(tag: Int, value: Char) {
             fieldBuilder[tag] = BinaryField("$value".encodeToByteArray())
         }
@@ -117,7 +116,6 @@ class MessageFormat(
             fieldBuilder[tag] = IntField(value.toInt())
         }
 
-        @UseExperimental(ExperimentalStdlibApi::class)
         override fun encodeTaggedString(tag: Int, value: String) {
             fieldBuilder[tag] = BinaryField(value.encodeToByteArray())
         }
@@ -146,7 +144,6 @@ class MessageFormat(
 
         override fun decodeTaggedByte(tag: Int): Byte = field.getByte(tag)
 
-        @UseExperimental(ExperimentalStdlibApi::class)
         override fun decodeTaggedChar(tag: Int): Char = field.getBinary(tag).decodeToString().single()
 
         override fun decodeTaggedDouble(tag: Int): Double = field.getDouble(tag)
@@ -168,7 +165,6 @@ class MessageFormat(
 
         override fun decodeTaggedShort(tag: Int): Short = field.getInt(tag).toShort()
 
-        @UseExperimental(ExperimentalStdlibApi::class)
         override fun decodeTaggedString(tag: Int): String = field.getBinary(tag).decodeToString()
 
         override fun decodeTaggedUnit(tag: Int) {

@@ -22,7 +22,6 @@ interface WebSocketClientCallbacks {
     suspend fun handleBinaryFrame(client: WebSocketClient, frame: ByteArray) {}
 }
 
-@UseExperimental(ExperimentalTime::class)
 class WebSocketClient(
     private val hostname: String,
     private val port: Int,
@@ -201,7 +200,6 @@ class WebSocketClient(
         }
     }
 
-    @UseExperimental(ExperimentalTime::class)
     private fun startPingProcessing(session: ActiveSession, scope: CoroutineScope): Deferred<Unit> {
         return scope.async {
             while (isActive) {

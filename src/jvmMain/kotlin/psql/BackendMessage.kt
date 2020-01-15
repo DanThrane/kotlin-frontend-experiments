@@ -11,7 +11,7 @@ import dk.thrane.playground.serialization.readInt
 import dk.thrane.playground.serialization.readShort
 import kotlinx.io.IOException
 
-sealed class BackendMessage(val type: Byte) {
+internal sealed class BackendMessage(val type: Byte) {
     sealed class Authentication(val subType: Int) : BackendMessage(Type) {
         object Ok : Authentication(T_OK)
         object ClearTextPassword : Authentication(T_ClearTextPassword)

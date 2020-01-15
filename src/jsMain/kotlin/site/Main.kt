@@ -44,7 +44,6 @@ private val rootContainer = css {
     minHeight = 100.vh
 }
 
-@UseExperimental(ExperimentalStdlibApi::class)
 fun main() {
     val log = Log("Main")
     rawCSS("@import url('https://fonts.googleapis.com/css?family=Poppins&display=swap');\n")

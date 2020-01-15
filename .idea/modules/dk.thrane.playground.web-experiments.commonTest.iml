@@ -9,7 +9,7 @@
           <externalSystemTestTask>jvmTest|web-experiments:jvmTest|jvm</externalSystemTestTask>
         </externalSystemTestTasks>
         <compilerSettings>
-          <option name="additionalArguments" value="-XXLanguage:+InlineClasses" />
+          <option name="additionalArguments" value="-progressive -Xuse-experimental=kotlin.time.ExperimentalTime,kotlin.ExperimentalStdlibApi,kotlinx.coroutines.ExperimentalCoroutinesApi -XXLanguage:+InlineClasses" />
         </compilerSettings>
         <compilerArguments>
           <option name="languageVersion" value="1.3" />

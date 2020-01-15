@@ -3,7 +3,7 @@ package dk.thrane.playground.psql
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.mapNotNull
 
-class PGTypeCache {
+internal class PGTypeCache {
     private data class Type(val oid: Int, val typeName: String, val typeLength: Int)
 
     private val typeCache = HashMap<Int, Type>()

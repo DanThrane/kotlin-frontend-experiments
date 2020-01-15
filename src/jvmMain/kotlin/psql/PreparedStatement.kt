@@ -3,7 +3,8 @@ package dk.thrane.playground.psql
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.*
-import java.util.ArrayList
+import java.util.*
+import kotlin.collections.HashMap
 
 /**
  * Provides an enhanced prepared statement adding support for named parameters.
@@ -19,7 +20,7 @@ class PreparedStatement<Input, Output>(
     private val indexToParameterName: List<String>
     private val preparedStatement: String
     private val header: List<PGType<*>>
-    private var statementId: PreparedStatementId? = null
+    private var statementIds = WeakHashMap<PostgresConnection, PreparedStatementId>()
 
     init {
         val types = inSerializer.descriptor.elementDescriptors()
@@ -92,10 +93,10 @@ class PreparedStatement<Input, Output>(
         return conn.createNativePreparedStatement(preparedStatement, header)
     }
 
-    @UseExperimental(ExperimentalCoroutinesApi::class)
     operator fun invoke(conn: PostgresConnection, rows: Flow<Input>): Flow<Output> {
         return flow {
-            val statementId = this@PreparedStatement.statementId ?: prepareForConnection(conn)
+            val statementId = statementIds[conn]
+                ?: prepareForConnection(conn).also { statementIds[conn] = it }
 
             emitAll(
                 conn.invokePreparedStatement(

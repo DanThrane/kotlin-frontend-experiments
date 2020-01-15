@@ -35,12 +35,10 @@ enum class LogLevel(val short: String) {
 }
 
 object LogManager {
-    @UseExperimental(ExperimentalTime::class)
     private var lastLog: ClockMark? = null
     var currentLogLevel: LogLevel = LogLevel.DEBUG
     val customLogLevels: MutableMap<String, LogLevel> = HashMap()
 
-    @UseExperimental(ExperimentalTime::class)
     fun log(level: LogLevel, tag: String, message: String) {
         val minLevel = customLogLevels[tag] ?: currentLogLevel
         if (level.ordinal < minLevel.ordinal) return

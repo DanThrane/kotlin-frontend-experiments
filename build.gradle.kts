@@ -38,7 +38,6 @@ kotlin {
                 implementation(kotlin("stdlib-common"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-runtime-common:0.14.0")
-
             }
         }
         val commonTest by getting {
@@ -79,8 +78,13 @@ kotlin {
                 implementation("org.jetbrains.kotlin:kotlin-test-js")
             }
         }
+
         all {
             languageSettings.enableLanguageFeature("InlineClasses")
+            languageSettings.progressiveMode = true
+            languageSettings.useExperimentalAnnotation("kotlin.time.ExperimentalTime")
+            languageSettings.useExperimentalAnnotation("kotlin.ExperimentalStdlibApi")
+            languageSettings.useExperimentalAnnotation("kotlinx.coroutines.ExperimentalCoroutinesApi")
         }
     }
 }

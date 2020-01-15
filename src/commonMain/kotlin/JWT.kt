@@ -20,7 +20,6 @@ interface Base64Encoder {
 }
 
 class JWT(private val json: Json, private val base64Encoder: Base64Encoder) {
-    @UseExperimental(ExperimentalStdlibApi::class)
     fun <T> create(algAndKey: JWTAlgorithmAndKey, claims: T, serializer: KSerializer<T>): String {
         val header = base64Encoder.encode(
             """{"typ":"JWT","alg":"${algAndKey.algorithm.encodedName}"}"""
@@ -50,7 +49,6 @@ class JWT(private val json: Json, private val base64Encoder: Base64Encoder) {
         }
     }
 
-    @UseExperimental(ExperimentalStdlibApi::class)
     fun validate(token: String): DecodedJWT {
         val splitToken = token.split('.')
         require(splitToken.size == 3)
@@ -67,7 +65,6 @@ class JWT(private val json: Json, private val base64Encoder: Base64Encoder) {
         return DecodedJWT(parsedHeader, parsedBody)
     }
 
-    @UseExperimental(ExperimentalStdlibApi::class)
     fun verify(token: String, expectedAlgorithmAndKey: JWTAlgorithmAndKey): DecodedJWT {
         val splitToken = token.split('.')
         require(splitToken.size == 3)

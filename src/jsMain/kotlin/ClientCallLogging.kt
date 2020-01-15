@@ -3,7 +3,6 @@ package dk.thrane.playground
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 
-@UseExperimental(ExperimentalTime::class)
 actual fun <Res> RPC<*, Res>.logCallEnded(
     result: Result<Res>,
     duration: Duration

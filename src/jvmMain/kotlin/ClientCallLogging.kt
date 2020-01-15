@@ -9,7 +9,6 @@ actual fun <Req> RPC<Req, *>.logCallStarted(requestMessage: Req) {
     callLogger.info("--> $requestName ($requestMessage)")
 }
 
-@UseExperimental(ExperimentalTime::class)
 actual fun <Res> RPC<*, Res>.logCallEnded(
     result: Result<Res>,
     duration: Duration

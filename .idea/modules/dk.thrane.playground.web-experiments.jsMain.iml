@@ -9,7 +9,7 @@
         </sourceSets>
         <newMppModelJpsModuleKind>COMPILATION_AND_SOURCE_SET_HOLDER</newMppModelJpsModuleKind>
         <compilerSettings>
-          <option name="additionalArguments" value="-XXLanguage:+InlineClasses" />
+          <option name="additionalArguments" value="-progressive -Xuse-experimental=kotlin.time.ExperimentalTime,kotlin.ExperimentalStdlibApi,kotlinx.coroutines.ExperimentalCoroutinesApi -XXLanguage:+InlineClasses" />
         </compilerSettings>
         <compilerArguments>
           <option name="outputFile" value="$MODULE_DIR$/../../build/js/packages/web-experiments/kotlin/web-experiments.js" />

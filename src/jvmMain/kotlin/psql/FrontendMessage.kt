@@ -5,7 +5,7 @@ import dk.thrane.playground.serialization.writeFully
 import dk.thrane.playground.serialization.writeInt
 import dk.thrane.playground.serialization.writeShort
 
-sealed class FrontendMessage(val type: Byte?, val writeLength: Boolean = true) {
+internal sealed class FrontendMessage(val type: Byte?, val writeLength: Boolean = true) {
     protected abstract fun serializePayload(out: OutputBuffer)
 
     fun serialize(out: OutputBuffer) {
