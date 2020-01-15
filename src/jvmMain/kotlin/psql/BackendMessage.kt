@@ -281,7 +281,7 @@ sealed class BackendMessage(val type: Byte) {
                         val fieldType = inputBuffer.read().toByte()
                         if (fieldType == 0.toByte()) break
                         val message = readString(inputBuffer)
-                        Pair(fieldType, message)
+                        fields.add(Pair(fieldType, message))
                     }
 
                     ErrorResponse(fields)
@@ -290,7 +290,7 @@ sealed class BackendMessage(val type: Byte) {
                 50.toByte() -> null
 
                 else -> {
-                    log.warn("Unimplemented message type: $type")
+                    log.warn("Unimplemented message type: $type (${type.toChar()})")
                     null
                 }
             }

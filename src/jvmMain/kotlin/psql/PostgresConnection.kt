@@ -3,11 +3,11 @@ package dk.thrane.playground.psql
 import dk.thrane.playground.Log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.*
 import java.math.BigDecimal
 import kotlin.time.ExperimentalTime
-import kotlin.time.measureTime
+
+data class PreparedStatementId(val id: String, val header: List<PGType<*>>)
 
 class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
     private val conn = InternalPostgresConnection(connectionParameters)
@@ -25,38 +25,58 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
             .mapToDbRow()
     }
 
-    @UseExperimental(ExperimentalCoroutinesApi::class)
-    fun sendPreparedStatement(
+    /**
+     * Creates a prepared statement and returns
+     */
+    suspend fun createNativePreparedStatement(
         statement: String,
         header: List<PGType<*>>,
+        flush: Boolean = true
+    ): PreparedStatementId {
+        log.debug("Prepared statement: (Statement: $statement) (Header: $header)")
+        val (psName, newStatement) = preparedStatementCache.getOrAllocateStatementName(statement)
+        if (newStatement) {
+            val typeOids = header.map {
+                typeCache.lookupTypeOidByName(it.typeName)
+                    ?: throw IllegalArgumentException("Unknown type oid for: $it")
+            }.toIntArray()
+
+            conn.sendMessageNow(FrontendMessage.Parse(psName, statement, typeOids))
+            if (flush) conn.sendCommandNow(FrontendMessage.Sync).collect()
+        }
+
+        return PreparedStatementId(psName, header)
+    }
+
+    /**
+     * Invokes an existing prepared statement using [statement] with a flow of [values]
+     *
+     * Once every [flushRate] commands the database will be asked to execute the statements
+     */
+    @UseExperimental(ExperimentalCoroutinesApi::class)
+    fun invokePreparedStatement(
+        statement: PreparedStatementId,
         values: Flow<List<Any?>>,
         flushRate: Int = 50
     ): Flow<DBRow> {
         return flow {
-            val (psName, newStatement) = preparedStatementCache.getOrAllocateStatementName(statement)
-            val headerSize = header.size
-            if (newStatement) {
-                val typeOids = header.map {
-                    typeCache.lookupTypeOidByName(it.typeName)
-                        ?: throw IllegalArgumentException("Unknown type oid for: $it")
-                }.toIntArray()
-
-                conn.sendMessage(FrontendMessage.Parse(psName, statement, typeOids))
-            }
-
+            var dirty = false
             var rowIdx = 0
             var startOfLastChunk = 0
             values.collect { row ->
-                if (row.size != headerSize) throw IllegalArgumentException("Bad number of columns in row: $row")
-                if (startOfLastChunk == rowIdx - 1) {
+                if (row.size != statement.header.size) {
+                    throw IllegalArgumentException("Bad number of columns in row: $row")
+                }
+
+                if (!dirty) {
                     // New chunk has just begun
                     conn.sendMessageNow(
-                        FrontendMessage.Describe(FrontendMessage.CloseTarget.PREPARED_STATEMENT, psName)
+                        FrontendMessage.Describe(FrontendMessage.CloseTarget.PREPARED_STATEMENT, statement.id)
                     )
                 }
 
                 val serialized = row.mapIndexed { colIdx, col ->
-                    val textual: String? = when (header[colIdx]) {
+                    val textual: String? = when (statement.header[colIdx]) {
                         PGType.Int2, PGType.Int4, PGType.Int8 -> col?.toString()
                         PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml -> col?.toString()
                         PGType.Bool -> (col as Boolean?)?.toString()
@@ -73,8 +93,17 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                     textual?.toByteArray(Charsets.UTF_8)
                 }.toTypedArray()
 
-                conn.sendMessageNow(FrontendMessage.Bind("$rowIdx", psName, ShortArray(0), serialized, ShortArray(0)))
+                conn.sendMessageNow(
+                    FrontendMessage.Bind(
+                        "$rowIdx",
+                        statement.id,
+                        ShortArray(0),
+                        serialized,
+                        ShortArray(0)
+                    )
+                )
                 conn.sendMessageNow(FrontendMessage.Execute("$rowIdx", 0))
+                dirty = true
 
                 if (rowIdx % flushRate == 0 && rowIdx != 0) {
                     // TODO This will suspend until the rows have been processed by the DB and the user
@@ -82,22 +111,35 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                     // being processed.
                     emitAll(conn.sendCommandNow(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
                     startOfLastChunk = rowIdx
+                    dirty = false
                 }
 
                 rowIdx++
             }
 
-            if (startOfLastChunk != rowIdx - 1) {
+            if (dirty) {
                 emitAll(conn.sendCommandNow(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
             }
         }
     }
+
+    /**
+     * Deletes a prepared statement identified by [id]
+     */
+    suspend fun deletePreparedStatement(id: PreparedStatementId) {
+        conn.sendMessageNow(FrontendMessage.Close(FrontendMessage.CloseTarget.PREPARED_STATEMENT, id.id))
+    }
+
 
     private fun Flow<BackendMessage>.mapToDbRow(offset: Int = 0): Flow<DBRow> {
         var rowDescription: List<ColumnDefinition<*>>? = null
         var commandIndex = -1 + offset
         return mapNotNull { message ->
             when (message) {
+                is BackendMessage.ErrorResponse -> {
+                    throw PostgresException.Generic(message.fields)
+                }
+
                 is BackendMessage.RowDescription -> {
                     commandIndex++
                     rowDescription = message.fields.map { field ->
@@ -233,13 +275,14 @@ interface DBRow {
     val size: Int
     val columnDefinitions: Array<ColumnDefinition<*>>
     fun getUntyped(index: Int): Any?
+    fun getUntypedByName(name: String, fallbackIndex: Int? = null): Any?
     operator fun <KtType> get(index: Int, columnDefinition: ColumnDefinition<KtType>): KtType?
     operator fun <KtType> get(index: Int, columnDefinition: PGType<KtType>): KtType?
 }
 
 private class MutableDBRow(override val size: Int) : DBRow {
     private val columns = arrayOfNulls<Column<*>>(size)
-    private val internalColumnDefinitions = arrayOfNulls<Column<*>>(size)
+    private val internalColumnDefinitions = arrayOfNulls<ColumnDefinition<*>>(size)
 
     @Suppress("UNCHECKED_CAST")
     override val columnDefinitions: Array<ColumnDefinition<*>>
@@ -247,6 +290,7 @@ private class MutableDBRow(override val size: Int) : DBRow {
 
     operator fun <KtType> set(index: Int, column: Column<KtType>) {
         columns[index] = column
+        internalColumnDefinitions[index] = column.definition
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -260,6 +304,20 @@ private class MutableDBRow(override val size: Int) : DBRow {
     @Suppress("UNCHECKED_CAST")
     override fun <KtType> get(index: Int, columnDefinition: PGType<KtType>): KtType? {
         return (getUntyped(index) as KtType)
+    }
+
+    override fun getUntypedByName(name: String, fallbackIndex: Int?): Any? {
+        val colIndex = columnDefinitions.indexOfFirst { it.name == name }.takeIf { it != -1 } ?: fallbackIndex
+
+        if (colIndex == null || colIndex !in columnDefinitions.indices) {
+            throw IllegalArgumentException(
+                "Unknown column '$name'. " +
+                        "Anonymous fallback: $fallbackIndex). " +
+                        "Known columns: ${columnDefinitions.toList()}"
+            )
+        }
+
+        return getUntyped(colIndex)
     }
 
     override fun toString(): String = "DBRow(" + columns.toList() + ")"
@@ -288,8 +346,8 @@ sealed class PGType<KtType>(val typeName: String) {
     object Void : PGType<Unit>("void")
     object Xml : PGType<String>("xml")
     object Bool : PGType<Boolean>("bool")
-    object Float4 : PGType<Float>("float")
-    object Float8 : PGType<Double>("double")
+    object Float4 : PGType<Float>("float4")
+    object Float8 : PGType<Double>("float8")
     object Numeric : PGType<BigDecimal>("numeric")
     object Char : PGType<kotlin.Char>("char")
     object Bytea : PGType<ByteArray>("bytea")
@@ -299,7 +357,6 @@ sealed class PGType<KtType>(val typeName: String) {
         const val date = "date"
         const val time = "time"
         const val timestamp = "timestamp"
-        const val jsonb = "jsonb"
         const val void = "void"
         const val uuid = "uuid"
         const val any = "any"
@@ -308,10 +365,6 @@ sealed class PGType<KtType>(val typeName: String) {
     class Unknown(typeName: String) : PGType<String>(typeName) {
         override fun toString(): String = "Unknown($typeName)"
     }
-}
-
-suspend fun PostgresConnection.sendPreparedStatement(statement: String, values: List<Column<*>>): Flow<DBRow> {
-    return sendPreparedStatement(statement, values.map { it.definition.type }, flowOf(values.map { it.value }))
 }
 
 @Serializable
@@ -340,6 +393,7 @@ suspend fun main() {
     )
      */
 
+    /*
     connection.sendQuery("create table if not exists foo(bar int4)").collect()
 
     val time = measureTime {
@@ -355,4 +409,32 @@ suspend fun main() {
         }
     }
     println("Insertion took $time")
+ */
+
+    /*
+    connection.sendQuery("create table if not exists bytes(bar bytea)").collect()
+    connection.sendPreparedStatement(
+        "insert into bytes(bar) values ($1)",
+        listOf(AnonymousColumn(PGType.Bytea, byteArrayOf(1, 3, 3, 7)))
+    ).collect { println(it) }
+     */
+
+    /*
+    connection.sendQuery("create table if not exists binary_json(foo jsonb)").collect()
+    connection.sendPreparedStatement(
+        "insert into binary_json(foo) values ($1)",
+        listOf(AnonymousColumn(PGType.Jsonb, "[1, 3, 3, 7]"))
+    ).collect()
+
+    connection.sendPreparedStatement("select * from binary_json", emptyList()).collect { println(it) }
+     */
+
+    @Serializable
+    data class Echo(val a: Int, val b: Int, val c: Int)
+
+    @Serializable
+    data class EchoOut(val a: Int, val b: Int, val c: Int, val d: Int)
+
+    val echo2 = PreparedStatement("select ?a, ?b, ?b, ?c", Echo.serializer(), EchoOut.serializer())
+    println(echo2(connection, Echo(1, 3, 7)).toList())
 }

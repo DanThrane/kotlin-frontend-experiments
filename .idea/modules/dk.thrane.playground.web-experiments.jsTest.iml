@@ -5,13 +5,15 @@
       <configuration version="3" platform="JavaScript " allPlatforms="JS []" useProjectSettings="false" isTestModule="true" externalProjectId="web-experiments">
         <dependsOnModuleNames>web-experiments_commonTest</dependsOnModuleNames>
         <sourceSets>
-          <sourceSet>dk.thrane.playground.web-experiments.jsMain</sourceSet>
           <sourceSet>dk.thrane.playground.web-experiments.commonTest</sourceSet>
+          <sourceSet>dk.thrane.playground.web-experiments.jsMain</sourceSet>
           <sourceSet>dk.thrane.playground.web-experiments.commonMain</sourceSet>
         </sourceSets>
         <newMppModelJpsModuleKind>COMPILATION_AND_SOURCE_SET_HOLDER</newMppModelJpsModuleKind>
         <externalSystemTestTasks>jsBrowserTest|web-experiments:jsTest|js</externalSystemTestTasks>
-        <compilerSettings />
+        <compilerSettings>
+          <option name="additionalArguments" value="-XXLanguage:+InlineClasses" />
+        </compilerSettings>
         <compilerArguments>
           <option name="outputFile" value="$MODULE_DIR$/../../build/js/packages/web-experiments-test/kotlin/web-experiments-test.js" />
           <option name="noStdlib" value="true" />

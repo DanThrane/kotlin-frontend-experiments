@@ -79,5 +79,8 @@ kotlin {
                 implementation("org.jetbrains.kotlin:kotlin-test-js")
             }
         }
+        all {
+            languageSettings.enableLanguageFeature("InlineClasses")
+        }
     }
 }

@@ -131,7 +131,6 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
         scope.launch {
             while (isActive) {
                 val message = session.readMessage()
-                log.debug("<-- $message")
                 when (message) {
                     is BackendMessage.NoticeResponse -> {
                         log.warn(
@@ -141,6 +140,7 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
                     }
 
                     is BackendMessage.ReadyForQuery -> {
+                        log.debug("<-- $message")
                         ingoingChannel?.close()
                         ingoingChannel = null
                         readyForQuery.release()
@@ -149,6 +149,9 @@ class InternalPostgresConnection(private val connectionParameters: PostgresConne
                     is BackendMessage.RowDescription, is BackendMessage.DataRow,
                     is BackendMessage.EmptyQueryResponse, is BackendMessage.CommandComplete,
                     is BackendMessage.ErrorResponse, BackendMessage.ParseComplete -> {
+                        if (ingoingChannel == null) {
+                            log.warn("Discarding $message")
+                        }
                         ingoingChannel?.send(message)
                     }
 
