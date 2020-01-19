@@ -3,16 +3,12 @@ package dk.thrane.playground.psql
 import dk.thrane.playground.Log
 import dk.thrane.playground.io.*
 import dk.thrane.playground.serialization.OutputBuffer
-import dk.thrane.playground.stackTraceToString
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import java.net.InetSocketAddress
 import java.net.StandardSocketOptions
@@ -39,12 +35,12 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
     private val messageOutBuffer = OutputBuffer(ByteArray(1024 * 1024))
 
     // State for outgoing traffic
-    private val readyForQuery = Semaphore(permits = 1, acquiredPermits = 1) // We have not yet received ReadyForQuery
+    private var readyForQueries = false
     private val sendMutex = Mutex()
 
     // State for ingoing traffic
-    private var ingoingChannel: SendChannel<BackendMessage>? = null
-    private val ingoingChannelMutex = Mutex()
+    private var commandChannel: SendChannel<BackendMessage>? = null
+    private var syncChannel: SendChannel<BackendMessage>? = null
 
     fun open(): Job {
         synchronized(openLock) {
@@ -139,20 +135,27 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
                         )
                     }
 
+                    is BackendMessage.CommandComplete -> {
+                        log.debug("Command complete!")
+                        commandChannel?.close()
+                        commandChannel = null
+                    }
+
                     is BackendMessage.ReadyForQuery -> {
                         log.debug("<-- $message")
-                        ingoingChannel?.close()
-                        ingoingChannel = null
-                        readyForQuery.release()
+                        readyForQueries = true
+                        syncChannel?.close()
+                        syncChannel = null
                     }
 
                     is BackendMessage.RowDescription, is BackendMessage.DataRow,
                     is BackendMessage.EmptyQueryResponse, is BackendMessage.CommandComplete,
                     is BackendMessage.ErrorResponse, BackendMessage.ParseComplete -> {
-                        if (ingoingChannel == null) {
+                        if (commandChannel == null && syncChannel == null) {
                             log.warn("Discarding $message")
                         }
-                        ingoingChannel?.send(message)
+                        commandChannel?.send(message)
+                        syncChannel?.send(message)
                     }
 
                     else -> {
@@ -163,9 +166,9 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
         }
     }
 
-    suspend fun sendMessage(message: FrontendMessage, awaitReadyForQuery: Boolean = true, flush: Boolean = false) {
+    suspend fun sendMessage(message: FrontendMessage, flush: Boolean = false) {
         // Take the semaphore if we can (because it is ready and needs to be consumed) or wait for it
-        if (!readyForQuery.tryAcquire() && awaitReadyForQuery) readyForQuery.acquire()
+        awaitReady()
         val session = session ?: throw IllegalStateException("Not yet connected")
 
         sendMutex.withLock {
@@ -173,12 +176,21 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
         }
     }
 
-    fun sendCommand(message: FrontendMessage, awaitReadyForQuery: Boolean = true): Flow<BackendMessage> {
+    fun sendCommand(message: FrontendMessage): Flow<BackendMessage> {
         return channelFlow {
-            // Take the semaphore if we can (because it is ready and needs to be consumed) or wait for it
-            if (!readyForQuery.tryAcquire() && awaitReadyForQuery) readyForQuery.acquire()
-            ingoingChannel = channel
-            sendMessage(message, false, flush = true)
+            awaitReady()
+            commandChannel = channel
+            log.debug("New command!")
+            sendMessage(message, flush = true)
+            awaitClose()
+        }
+    }
+
+    fun sendSync(): Flow<BackendMessage> {
+        return channelFlow {
+            awaitReady()
+            syncChannel = channel
+            sendMessage(FrontendMessage.Sync, flush = true)
             awaitClose()
         }
     }
@@ -187,6 +199,7 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
         message: FrontendMessage,
         flush: Boolean = true
     ) {
+        log.debug("--> $message")
         require(messageOutBuffer.ptr == 0)
         message.serialize(messageOutBuffer)
         outs.write(messageOutBuffer.array, 0, messageOutBuffer.ptr)
@@ -209,16 +222,14 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
         val outs: AsyncByteOutStream
     )
 
+    private suspend fun awaitReady() {
+        while (!readyForQueries) {
+            delay(5)
+        }
+    }
+
     companion object {
         private val log = Log("PostgresConnection")
         private val md5Digest = MessageDigest.getInstance("MD5")!!
     }
-}
-
-internal suspend fun InternalPostgresConnection.sendMessageNow(message: FrontendMessage, flush: Boolean = false) {
-    sendMessage(message, awaitReadyForQuery = false, flush = flush)
-}
-
-internal fun InternalPostgresConnection.sendCommandNow(message: FrontendMessage): Flow<BackendMessage> {
-    return sendCommand(message, awaitReadyForQuery = false)
 }

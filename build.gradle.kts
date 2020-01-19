@@ -51,10 +51,8 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 implementation(kotlin("stdlib-jdk8"))
-                implementation("com.h2database:h2:1.4.199")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.3.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-runtime:0.14.0")
-                implementation("com.github.jasync-sql:jasync-postgresql:1.0.12")
                 implementation(kotlin("reflect"))
             }
         }

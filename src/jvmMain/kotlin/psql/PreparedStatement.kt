@@ -3,6 +3,8 @@ package dk.thrane.playground.psql
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.*
+import kotlinx.serialization.internal.ByteDescriptor
+import kotlinx.serialization.internal.PrimitiveArrayDescriptor
 import java.util.*
 import kotlin.collections.HashMap
 
@@ -37,10 +39,16 @@ class PreparedStatement<Input, Output>(
                     PrimitiveKind.CHAR -> PGType.Char
                     PrimitiveKind.STRING -> PGType.Text
                     StructureKind.CLASS -> TODO()
-                    StructureKind.LIST -> TODO()
+                    StructureKind.LIST -> {
+                        if (elem is PrimitiveArrayDescriptor && elem.elementDesc == ByteDescriptor) {
+                            PGType.Bytea
+                        } else {
+                            TODO()
+                        }
+                    }
                     StructureKind.MAP -> TODO()
                     UnionKind.OBJECT -> TODO()
-                    UnionKind.ENUM_KIND -> TODO()
+                    UnionKind.ENUM_KIND -> PGType.Text
                     PolymorphicKind.SEALED -> TODO()
                     PolymorphicKind.OPEN -> TODO()
                 }
@@ -93,7 +101,7 @@ class PreparedStatement<Input, Output>(
         return conn.createNativePreparedStatement(preparedStatement, header)
     }
 
-    operator fun invoke(conn: PostgresConnection, rows: Flow<Input>): Flow<Output> {
+    fun query(conn: PostgresConnection, rows: Flow<Input>): Flow<Output> {
         return flow {
             val statementId = statementIds[conn]
                 ?: prepareForConnection(conn).also { statementIds[conn] = it }
@@ -112,6 +120,30 @@ class PreparedStatement<Input, Output>(
     }
 }
 
-operator fun <I, O> PreparedStatement<I, O>.invoke(conn: PostgresConnection, row: I): Flow<O> {
-    return invoke(conn, flowOf(row))
+fun <I, O> PreparedStatement<I, O>.query(conn: PostgresConnection, row: I): Flow<O> {
+    return query(conn, flowOf(row))
+}
+
+suspend fun <I, O> PreparedStatement<I, O>.command(conn: PostgresConnection, row: I) {
+    query(conn, flowOf(row)).collect()
+}
+
+suspend fun <I, O> PreparedStatement<I, O>.command(conn: PostgresConnection, rows: Flow<I>) {
+    query(conn, rows).collect()
+}
+
+fun <I, O> PreparedStatement<I, O>.asBatchedCommand(): suspend (conn: PostgresConnection, rows: Flow<I>) -> Unit {
+    return { conn, rows -> command(conn, rows) }
+}
+
+fun <I, O> PreparedStatement<I, O>.asCommand(): suspend (conn: PostgresConnection, row: I) -> Unit {
+    return { conn, row -> command(conn, flowOf(row)) }
+}
+
+fun <I, O> PreparedStatement<I, O>.asBatchedQuery(): suspend (conn: PostgresConnection, rows: Flow<I>) -> Flow<O> {
+    return { conn, rows -> query(conn, rows) }
+}
+
+fun <I, O> PreparedStatement<I, O>.asQuery(): suspend (conn: PostgresConnection, row: I) -> Flow<O> {
+    return { conn, row -> query(conn, flowOf(row)) }
 }

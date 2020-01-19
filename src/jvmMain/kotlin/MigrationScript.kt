@@ -1,84 +1,94 @@
 package dk.thrane.playground
 
-import dk.thrane.playground.db.AsyncDBConnection
-import dk.thrane.playground.db.DBConnectionPool
-import dk.thrane.playground.db.SQLRow
-import dk.thrane.playground.db.SQLTable
-import dk.thrane.playground.db.creationScript
-import dk.thrane.playground.db.insert
-import dk.thrane.playground.db.int
-import dk.thrane.playground.db.sendPreparedStatement
-import dk.thrane.playground.db.transaction
-import dk.thrane.playground.db.useInstance
-import dk.thrane.playground.db.varchar
+import dk.thrane.playground.psql.SQLTable
+import dk.thrane.playground.psql.*
+import kotlinx.coroutines.flow.singleOrNull
+import kotlinx.serialization.Serializable
 
 data class MigrationScript(
     val name: String,
-    val script: suspend (AsyncDBConnection) -> Unit
+    val script: suspend (PostgresConnection) -> Unit
 )
 
-object MigrationTable : SQLTable("migration") {
-    val index = int("index")
-    val scriptName = varchar("name", 256)
-
-    override fun migration(handler: MigrationHandler) {
-        // Do nothing
+@Serializable
+data class MigrationTable(val index: Int, val scriptName: String) {
+    companion object : SQLTable("migrations") {
+        const val index = "index"
+        const val scriptName = "scriptName"
     }
 }
 
-class MigrationHandler(private val db: DBConnectionPool) {
+class MigrationHandler(private val db: PostgresConnectionPool) {
     private val migrations = ArrayList<MigrationScript>()
 
-    fun addScript(name: String, script: suspend (AsyncDBConnection) -> Unit) {
+    fun addScript(name: String, script: suspend (PostgresConnection) -> Unit) {
         migrations.add(MigrationScript(name, script))
     }
+
+    @Serializable private data class CountTable(val count: Long?)
+
+    @Serializable private data class FindTableQuery(val schema: String, val table: String)
+    @Serializable private data class FindTableResponse(val exists: Boolean)
+    private val findTable = PreparedStatement(
+        """
+            select exists(
+                select 1
+                from information_schema.tables 
+                where  table_schema = ?schema
+                and    table_name = ?table
+            )
+        """,
+        FindTableQuery.serializer(),
+        FindTableResponse.serializer()
+    ).asQuery()
+
+    private val insertMigration = PreparedStatement(
+        """
+            insert into $MigrationTable 
+                (${MigrationTable.index}, ${MigrationTable.scriptName}) 
+                values (?${MigrationTable.index}, ?${MigrationTable.scriptName})
+        """,
+        MigrationTable.serializer(),
+        EmptyTable.serializer()
+    ).asCommand()
 
     suspend fun runMigrations() {
         db.useInstance { conn ->
             log.debug("Starting migration")
 
-            val tableExists = conn.sendPreparedStatement(
-                {
-                    setParameter("table", MigrationTable.name)
-                    setParameter("schema", db.schema)
-                },
-
-                """
-                    select exists(
-                        select 1
-                        from information_schema.tables 
-                        where  table_schema = ?schema
-                        and    table_name = ?table
-                    )
-                """
-            ).rows.singleOrNull()?.getBoolean(0) ?: false
+            val tableExists = findTable(conn, FindTableQuery("public", "migrations")).singleOrNull()?.exists ?: false
 
             if (!tableExists) {
-                db.transaction(conn) {
+                conn.withTransaction {
                     log.info("Migration meta table not found. Creating a new table!")
-                    conn.sendPreparedStatement(MigrationTable.creationScript())
+                    conn.sendCommand(
+                        """
+                            create table migrations(
+                                index int4,
+                                scriptName text
+                            )
+                        """
+                    )
                 }
             } else {
                 log.debug("Migration meta table already exists.")
             }
 
-            val maxIndex = db.transaction(conn) {
+            val maxIndex = conn.withTransaction {
                 conn
-                    .sendPreparedStatement("select max(${MigrationTable.index}) from $MigrationTable")
-                    .rows.singleOrNull()?.getInt(0) ?: 0
+                    .sendQuery("select max(${MigrationTable.index})::int8 from $MigrationTable")
+                    .mapRows(CountTable.serializer())
+                    .singleOrNull()?.count ?: 0L
             }
 
             log.debug("Migration up to index $maxIndex has been completed.")
 
             migrations.forEachIndexed { index, migration ->
                 if (index + 1 > maxIndex) {
-                    db.transaction(conn) {
+                    conn.withTransaction {
                         log.info("Running migration: ${migration.name}")
                         migration.script(conn)
-                        conn.insert(MigrationTable, SQLRow().also { row ->
-                            row[MigrationTable.index] = index + 1
-                            row[MigrationTable.scriptName] = migration.name
-                        })
+                        insertMigration(conn, MigrationTable(index + 1, migration.name))
                     }
                 }
             }
@@ -91,3 +101,4 @@ class MigrationHandler(private val db: DBConnectionPool) {
         private val log = Log("MigrationHandler")
     }
 }
+

@@ -1,30 +1,37 @@
 package dk.thrane.playground.site.service
 
 import dk.thrane.playground.MigrationHandler
-import dk.thrane.playground.db.SQLTable
-import dk.thrane.playground.db.long
-import dk.thrane.playground.db.varchar
+import dk.thrane.playground.psql.SQLTable
+import kotlinx.serialization.Serializable
 
-object Tokens : SQLTable("tokens") {
-    val username = varchar("username", 256)
-    val token = varchar("token", 256)
-    val expiry = long("expiry")
+@Serializable
+data class TokenTable(
+    val username: String,
+    val token: String,
+    val expiry: Long
+) {
+    override fun toString() = "TokenTable($username, $expiry)"
 
-    override fun migration(handler: MigrationHandler) {
-        handler.addScript("initial table") { conn ->
-            conn.sendPreparedStatement(
-                """
-                create table tokens(
-                    username varchar(256),
-                    token varchar(256),
-                    expiry bigint,
-                    
-                    primary key (token),
-                    foreign key (username) references principals(username)
+    companion object : SQLTable("tokens") {
+        const val username = "username"
+        const val token = "token"
+        const val expiry = "expiry"
+
+        override fun registerMigrations(handler: MigrationHandler) {
+            handler.addScript("tokens init") { conn ->
+                conn.sendCommand(
+                    """
+                        create table tokens(
+                            username varchar(256),
+                            token varchar(256),
+                            expiry bigint,
+                            
+                            primary key (token),
+                            foreign key (username) references principals(username)
+                        )
+                    """
                 )
-                """
-            )
+            }
         }
     }
-
 }

@@ -3,6 +3,8 @@ package dk.thrane.playground.psql
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.*
+import kotlinx.serialization.internal.ByteDescriptor
+import kotlinx.serialization.internal.PrimitiveArrayDescriptor
 
 // TODO This is by no means done but it does show that it is possible
 internal class PostgresDecoder(private val row: DBRow) : TaggedDecoder<Pair<Int, String>>() {
@@ -84,6 +86,14 @@ internal fun <T> Flow<DBRow>.mapRows(serializer: KSerializer<T>): Flow<T> {
     }
 }
 
+internal class PostgresByteaEncoder(private val target: ByteArray) : TaggedEncoder<Int>() {
+    override fun SerialDescriptor.getTag(index: Int): Int = index
+
+    override fun encodeTaggedByte(tag: Int, value: Byte) {
+        target[tag] = value
+    }
+}
+
 internal class PostgresRowEncoder(
     private val target: Array<Any?>,
     private val headers: List<PGType<*>>,
@@ -95,8 +105,29 @@ internal class PostgresRowEncoder(
 
     override fun SerialDescriptor.getTag(index: Int): Pair<Int, String> = index to getElementName(index)
 
+    override fun beginCollection(
+        desc: SerialDescriptor,
+        collectionSize: Int,
+        vararg typeParams: KSerializer<*>
+    ): CompositeEncoder {
+        val tag = currentTagOrNull ?: return this
+        if (desc is PrimitiveArrayDescriptor && desc.elementDesc == ByteDescriptor) {
+            val expectedType = headers[tag.first]
+            if (expectedType != PGType.Bytea) {
+                throw IllegalStateException("Expected $tag to have type bytea but was $expectedType")
+            }
+
+            val value = ByteArray(collectionSize)
+            nameToIndex.getValue(tag.second).forEach { i -> target[i] = value}
+            return PostgresByteaEncoder(value)
+        }
+
+        return super.beginCollection(desc, collectionSize, *typeParams)
+    }
+
     override fun beginStructure(desc: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeEncoder {
         val tag = currentTagOrNull ?: return this
+
         TODO()
     }
 

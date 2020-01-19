@@ -1,12 +1,11 @@
 package dk.thrane.playground.psql
 
 import dk.thrane.playground.Log
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.*
 import java.math.BigDecimal
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.time.ExperimentalTime
 
 data class PreparedStatementId(val id: String, val header: List<PGType<*>>)
 
@@ -15,16 +14,35 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
     private val typeCache = PGTypeCache()
     private val connectionId = connectionIdAllocator.getAndIncrement()
     private val preparedStatementCache = PreparedStatementCache(connectionId)
+    private val hasCalledOpen = AtomicBoolean(false)
 
     suspend fun open() {
-        conn.open()
-        typeCache.refreshTypeCache(conn)
+        if (hasCalledOpen.compareAndSet(false, true)) {
+            conn.open()
+            typeCache.refreshTypeCache(conn)
+        }
+    }
+
+    suspend fun begin() {
+        return conn.sendCommand(FrontendMessage.Query("begin")).collect()
+    }
+
+    suspend fun commit() {
+        return conn.sendCommand(FrontendMessage.Query("commit")).collect()
+    }
+
+    suspend fun rollback() {
+        return conn.sendCommand(FrontendMessage.Query("rollback")).collect()
     }
 
     fun sendQuery(query: String): Flow<DBRow> {
         return conn
             .sendCommand(FrontendMessage.Query(query))
             .mapToDbRow()
+    }
+
+    suspend fun sendCommand(query: String) {
+        sendQuery(query).collect()
     }
 
     /**
@@ -43,8 +61,8 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                     ?: throw IllegalArgumentException("Unknown type oid for: $it")
             }.toIntArray()
 
-            conn.sendMessageNow(FrontendMessage.Parse(psName, statement, typeOids))
-            if (flush) conn.sendCommandNow(FrontendMessage.Sync).collect()
+            conn.sendMessage(FrontendMessage.Parse(psName, statement, typeOids))
+            if (flush) conn.sendSync().collect()
         }
 
         return PreparedStatementId(psName, header)
@@ -71,7 +89,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
 
                 if (!dirty) {
                     // New chunk has just begun
-                    conn.sendMessageNow(
+                    conn.sendMessage(
                         FrontendMessage.Describe(FrontendMessage.CloseTarget.PREPARED_STATEMENT, statement.id)
                     )
                 }
@@ -94,7 +112,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                     textual?.toByteArray(Charsets.UTF_8)
                 }.toTypedArray()
 
-                conn.sendMessageNow(
+                conn.sendMessage(
                     FrontendMessage.Bind(
                         "$rowIdx",
                         statement.id,
@@ -103,14 +121,14 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                         ShortArray(0)
                     )
                 )
-                conn.sendMessageNow(FrontendMessage.Execute("$rowIdx", 0))
+                conn.sendMessage(FrontendMessage.Execute("$rowIdx", 0))
                 dirty = true
 
                 if (rowIdx % flushRate == 0 && rowIdx != 0) {
                     // TODO This will suspend until the rows have been processed by the DB and the user
                     // Using a channelFlow instead means we can continue to send more queries to the DB while it is
                     // being processed.
-                    emitAll(conn.sendCommandNow(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
+                    emitAll(conn.sendCommand(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
                     startOfLastChunk = rowIdx
                     dirty = false
                 }
@@ -119,7 +137,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
             }
 
             if (dirty) {
-                emitAll(conn.sendCommandNow(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
+                emitAll(conn.sendCommand(FrontendMessage.Sync).mapToDbRow(offset = startOfLastChunk))
             }
         }
     }
@@ -128,7 +146,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
      * Deletes a prepared statement identified by [id]
      */
     suspend fun deletePreparedStatement(id: PreparedStatementId) {
-        conn.sendMessageNow(FrontendMessage.Close(FrontendMessage.CloseTarget.PREPARED_STATEMENT, id.id))
+        conn.sendMessage(FrontendMessage.Close(FrontendMessage.CloseTarget.PREPARED_STATEMENT, id.id))
     }
 
     private fun Flow<BackendMessage>.mapToDbRow(offset: Int = 0): Flow<DBRow> {
@@ -212,7 +230,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                             PGType.Bool -> {
                                 Column(
                                     ColumnDefinition(name, PGType.Bool),
-                                    stringColumns[index]?.equals("true", ignoreCase = true),
+                                    stringColumns[index]?.equals("t", ignoreCase = true),
                                     commandIndex
                                 )
                             }
@@ -358,6 +376,6 @@ suspend fun main() {
     @Serializable
     data class EchoOut(val a: Int, val b: Int, val c: Int, val d: Int)
 
-    val echo2 = PreparedStatement("select ?a, ?b, ?b, ?c", Echo.serializer(), EchoOut.serializer())
+    val echo2 = PreparedStatement("select ?a, ?b, ?b, ?c", Echo.serializer(), EchoOut.serializer()).asQuery()
     println(echo2(connection, Echo(1, 3, 7)).toList())
 }

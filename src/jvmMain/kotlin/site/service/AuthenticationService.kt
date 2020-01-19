@@ -4,15 +4,14 @@ import dk.thrane.playground.JWT
 import dk.thrane.playground.JWTAlgorithmAndKey
 import dk.thrane.playground.RPCException
 import dk.thrane.playground.ResponseCode
-import dk.thrane.playground.db.DBConnectionPool
-import dk.thrane.playground.db.SQLRow
-import dk.thrane.playground.db.insert
-import dk.thrane.playground.db.mapTable
-import dk.thrane.playground.db.sendPreparedStatement
-import dk.thrane.playground.db.useTransaction
+import dk.thrane.playground.psql.*
 import dk.thrane.playground.site.api.JWTClaims
 import dk.thrane.playground.site.api.Principal
 import dk.thrane.playground.site.api.PrincipalRole
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.singleOrNull
+import kotlinx.coroutines.flow.toList
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.security.NoSuchAlgorithmException
 import java.security.SecureRandom
@@ -28,70 +27,75 @@ data class LoginResponse(val principal: Principal, val token: String)
 private data class CachedToken(val expiry: Long, val principal: Principal)
 
 class AuthenticationService(
-    private val db: DBConnectionPool,
+    private val db: PostgresConnectionPool,
     private val jwt: JWT,
     private val jwtAlgorithmAndKey: JWTAlgorithmAndKey
 ) {
     private val tokenCache = HashMap<String, CachedToken>()
+    private val insertPrincipal = createInsertStatement(PrincipalTable, PrincipalTable.serializer()).asCommand()
+    private val insertToken = createInsertStatement(TokenTable, TokenTable.serializer()).asCommand()
+
+    @Serializable private data class FindByUsername(val username: String)
+    private val findPrincipalByUsername = PreparedStatement(
+        "select * from $PrincipalTable where ${PrincipalTable.username} = ?username",
+        FindByUsername.serializer(),
+        PrincipalTable.serializer()
+    ).asQuery()
+
+    @Serializable private data class DeleteByToken(val token: String)
+    private val deleteByToken = PreparedStatement(
+        "delete from $TokenTable where ${TokenTable.token} = ?token",
+        DeleteByToken.serializer(),
+        EmptyTable.serializer()
+    ).asCommand()
+
+    @Serializable private data class FindPrincipalByToken(val token: String, val now: Long)
+    private val findPrincipalByToken = PreparedStatement(
+        """
+           select P.* 
+           from $PrincipalTable P, $TokenTable T 
+           where 
+               P.${PrincipalTable.username} = T.${TokenTable.username} and
+               ${TokenTable.token} = ?token and 
+               ${TokenTable.expiry} > ?now 
+        """,
+        FindPrincipalByToken.serializer(),
+        PrincipalTable.serializer()
+    ).asQuery()
 
     suspend fun createUser(
         role: PrincipalRole,
         username: String,
         password: String
     ) {
+        val hashedPassword = hashPassword(password.toCharArray())
         db.useTransaction { conn ->
-            val hashedPassword = hashPassword(password.toCharArray())
-            conn.insert(Principals, (SQLRow().also { row ->
-                row[Principals.username] = username
-                row[Principals.password] = hashedPassword.password
-                row[Principals.salt] = hashedPassword.salt
-                row[Principals.role] = role.name
-            }))
+            insertPrincipal(conn, PrincipalTable(username, role, hashedPassword.password, hashedPassword.salt))
         }
     }
 
     suspend fun login(username: String, password: String): LoginResponse? {
         db.useTransaction { conn ->
-            val principal = conn
-                .sendPreparedStatement(
-                    {
-                        setParameter("username", username)
-                    },
-                    """
-                        select * from $Principals where ${Principals.username} = ?username
-                    """.trimIndent()
-                )
-                .rows
-                .mapTable(Principals)
-                .singleOrNull() ?: return null
-
-            val realPassword = principal[Principals.password]
-            val salt = principal[Principals.salt]
-
-            return if (realPassword.contentEquals(hashPassword(password.toCharArray(), salt).password)) {
-                val token = createLoginToken()
-                conn.insert(Tokens, SQLRow().also { row ->
-                    row[Tokens.username] = username
-                    row[Tokens.token] = token
-                    row[Tokens.expiry] = System.currentTimeMillis() + tokenExpiryTime
-                })
-
-                val mappedPrincipal = principalFromRow(principal)
-                cacheToken(token, mappedPrincipal)
-
-                LoginResponse(mappedPrincipal, token)
-            } else {
-                null
+            val principal = findPrincipalByUsername(conn, FindByUsername(username)).singleOrNull() ?: run {
+                // Always run password hashing.
+                // This avoid leaking information about the user's existence through timing attacks.
+                hashPassword(password.toCharArray())
+                return null
             }
+
+            if (!principal.password.contentEquals(hashPassword(password.toCharArray(), principal.salt).password)) {
+                return null
+            }
+
+            val token = TokenTable(username, createLoginToken(), System.currentTimeMillis() + tokenExpiryTime)
+            insertToken(conn, token)
+            return LoginResponse(Principal(principal.username, principal.role), token.token)
         }
     }
 
     suspend fun logout(token: String) {
         db.useTransaction { conn ->
-            conn.sendPreparedStatement(
-                { setParameter("token", token) },
-                "delete from $Tokens where ${Tokens.token} = ?token"
-            )
+            deleteByToken(conn, DeleteByToken(token))
         }
     }
 
@@ -124,28 +128,13 @@ class AuthenticationService(
         }
 
         db.useTransaction { conn ->
-            val row = conn
-                .sendPreparedStatement(
-                    {
-                        setParameter("token", token)
-                        setParameter("expiry", System.currentTimeMillis())
-                    },
-                    """
-                    select P.* 
-                    from $Principals P, $Tokens T 
-                    where 
-                        P.${Principals.username} = T.${Tokens.username} and
-                        ${Tokens.token} = ?token and 
-                        ${Tokens.expiry} > ?expiry
-                    """
-                )
-                .rows
-                .mapTable(Principals)
-                .singleOrNull() ?: return null
+            val principal = findPrincipalByToken(
+                conn,
+                FindPrincipalByToken(token, System.currentTimeMillis())
+            ).singleOrNull() ?: return null
 
-            val mappedPrincipal = principalFromRow(row)
+            val mappedPrincipal = Principal(principal.username, principal.role)
             cacheToken(token, mappedPrincipal)
-
             return mappedPrincipal
         }
     }
@@ -155,12 +144,6 @@ class AuthenticationService(
             tokenCache[token] = CachedToken(System.currentTimeMillis() + cacheExpiryTime, mappedPrincipal)
         }
     }
-
-    private fun principalFromRow(row: SQLRow): Principal =
-        Principal(
-            row[Principals.username],
-            PrincipalRole.valueOf(row[Principals.role])
-        )
 
     private fun createLoginToken(): String {
         val bytes = ByteArray(tokenLength).also { secureRandom.nextBytes(it) }
