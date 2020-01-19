@@ -28,13 +28,15 @@ suspend inline fun <R> PostgresConnectionPool.useTransaction(block: (PostgresCon
 }
 
 suspend inline fun <R> PostgresConnection.withTransaction(block: () -> R): R {
+    var success = true
     try {
         begin()
-        val result = block()
-        commit()
-        return result
+        return block()
     } catch (ex: Throwable) {
-        rollback()
+        success = false
         throw ex
+    } finally {
+        if (success) commit()
+        else rollback()
     }
 }

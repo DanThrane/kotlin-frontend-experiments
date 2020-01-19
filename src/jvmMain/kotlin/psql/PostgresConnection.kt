@@ -15,6 +15,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
     private val connectionId = connectionIdAllocator.getAndIncrement()
     private val preparedStatementCache = PreparedStatementCache(connectionId)
     private val hasCalledOpen = AtomicBoolean(false)
+    private var transactionOpen = AtomicBoolean(false)
 
     suspend fun open() {
         if (hasCalledOpen.compareAndSet(false, true)) {
@@ -24,14 +25,29 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
     }
 
     suspend fun begin() {
+        log.debug("begin()")
+        if (!transactionOpen.compareAndSet(false, true)) {
+            // TODO Close connection
+            throw IllegalStateException("Transaction already open!")
+        }
         return conn.sendCommand(FrontendMessage.Query("begin")).collect()
     }
 
     suspend fun commit() {
+        log.debug("commit()")
+        if (!transactionOpen.compareAndSet(true, false)) {
+            // TODO Close connection
+            throw IllegalStateException("Transaction already closed!")
+        }
         return conn.sendCommand(FrontendMessage.Query("commit")).collect()
     }
 
     suspend fun rollback() {
+        log.debug("rollback()")
+        if (!transactionOpen.compareAndSet(true, false)) {
+            // TODO Close connection
+            throw IllegalStateException("Transaction already closed!")
+        }
         return conn.sendCommand(FrontendMessage.Query("rollback")).collect()
     }
 
@@ -114,14 +130,14 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
 
                 conn.sendMessage(
                     FrontendMessage.Bind(
-                        "$rowIdx",
+                        "",
                         statement.id,
                         ShortArray(0),
                         serialized,
                         ShortArray(0)
                     )
                 )
-                conn.sendMessage(FrontendMessage.Execute("$rowIdx", 0))
+                conn.sendMessage(FrontendMessage.Execute("", 0))
                 dirty = true
 
                 if (rowIdx % flushRate == 0 && rowIdx != 0) {

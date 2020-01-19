@@ -55,24 +55,23 @@ object AuthenticationStore {
     }
 
     suspend fun getAccessTokenOrRefresh(): String {
-        val currentAccessToken = accessToken ?: ""
-        val currentJwt =
-            runCatching { JWT.default.validate(currentAccessToken) }.getOrNull() ?: return refreshAccessToken()
-
-        val claims = Json.plain.fromJson(JWTClaims.serializer(), currentJwt.header)
-        if (claims.sub != principal.currentValue?.username) {
-            mutableRefreshToken.currentValue = null
-            unsafeRefreshToken = null
-            accessToken = null
-            throw RPCException(ResponseCode.FORBIDDEN, "Bad tokens")
+        val currentAccessToken = accessToken ?: run {
+            refreshAccessToken()
+            return getAccessTokenOrRefresh()
         }
+        val currentJwt =
+            runCatching { JWT.default.validate(currentAccessToken) }.getOrNull() ?: run {
+                mutableRefreshToken.currentValue = null
+                mutablePrincipal.currentValue = null
+                throw RPCException(ResponseCode.INTERNAL_ERROR, "Bad tokens")
+            }
+
+        val claims = Json.plain.fromJson(JWTClaims.serializer(), currentJwt.body)
 
         if (claims.exp > Date().getTime().toLong()) {
-            log.debug("Need to refresh token")
             return refreshAccessToken()
         }
 
-        log.debug("Using current token: $currentAccessToken")
         return currentAccessToken
     }
 

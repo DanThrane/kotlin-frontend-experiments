@@ -136,13 +136,11 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
                     }
 
                     is BackendMessage.CommandComplete -> {
-                        log.debug("Command complete!")
                         commandChannel?.close()
                         commandChannel = null
                     }
 
                     is BackendMessage.ReadyForQuery -> {
-                        log.debug("<-- $message")
                         readyForQueries = true
                         syncChannel?.close()
                         syncChannel = null
@@ -180,7 +178,6 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
         return channelFlow {
             awaitReady()
             commandChannel = channel
-            log.debug("New command!")
             sendMessage(message, flush = true)
             awaitClose()
         }
@@ -199,7 +196,6 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
         message: FrontendMessage,
         flush: Boolean = true
     ) {
-        log.debug("--> $message")
         require(messageOutBuffer.ptr == 0)
         message.serialize(messageOutBuffer)
         outs.write(messageOutBuffer.array, 0, messageOutBuffer.ptr)

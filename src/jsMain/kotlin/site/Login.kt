@@ -1,9 +1,7 @@
 package dk.thrane.playground.site
 
 import dk.thrane.playground.*
-import dk.thrane.playground.components.CardInStack
-import dk.thrane.playground.components.Router
-import dk.thrane.playground.components.cardStack
+import dk.thrane.playground.components.*
 import kotlinx.coroutines.launch
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLInputElement
@@ -94,10 +92,14 @@ fun Element.loginPage() {
                             on("submit") { e ->
                                 e.preventDefault()
                                 scope.launch {
-                                    AuthenticationStore.login(
-                                        usernameRef.current.value,
-                                        passwordRef.current.value
-                                    )
+                                    try {
+                                        AuthenticationStore.login(
+                                            usernameRef.current.value,
+                                            passwordRef.current.value
+                                        )
+                                    } catch (ex: RPCException) {
+                                        Toasts.push(Toast(ToastType.INFO, ex.message ?: ex.statusCode.toString(), 2000L))
+                                    }
                                 }
                             }
 

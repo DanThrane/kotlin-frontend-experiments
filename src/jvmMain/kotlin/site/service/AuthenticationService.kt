@@ -8,9 +8,7 @@ import dk.thrane.playground.psql.*
 import dk.thrane.playground.site.api.JWTClaims
 import dk.thrane.playground.site.api.Principal
 import dk.thrane.playground.site.api.PrincipalRole
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.singleOrNull
-import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.security.NoSuchAlgorithmException

@@ -38,7 +38,7 @@ internal class PostgresDecoder(private val row: DBRow) : TaggedDecoder<Pair<Int,
     }
 
     override fun decodeTaggedEnum(tag: Pair<Int, String>, enumDescription: SerialDescriptor): Int {
-        return super.decodeTaggedEnum(tag, enumDescription)
+        return enumDescription.elementNames().indexOf(row.getUntypedByName(tag.second, tag.first) as String)
     }
 
     override fun decodeTaggedFloat(tag: Pair<Int, String>): Float {

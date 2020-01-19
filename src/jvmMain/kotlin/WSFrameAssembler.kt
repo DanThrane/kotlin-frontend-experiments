@@ -22,7 +22,7 @@ class WSFrameAssembler<Session>(
 
     private suspend fun handleFrame(fin: Boolean, opcode: WebSocketOpCode?, payload: ByteArray): Boolean {
         if (!fin || opcode == WebSocketOpCode.CONTINUATION) {
-            if (opcode !== WebSocketOpCode.CONTINUATION) {
+            if (opcode != WebSocketOpCode.CONTINUATION) {
                 // First frame has !fin and opcode != CONTINUATION
                 // Remaining frames will have opcode CONTINUATION
                 // Last frame will have fin and opcode CONTINUATION
