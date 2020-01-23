@@ -18,7 +18,7 @@ fun Int8Array.asByteArray(): ByteArray = unsafeCast<ByteArray>()
 class JSWSConnection internal constructor(
     location: String,
     private val scope: CoroutineScope
-) : WSConnection {
+) : WSConnection() {
     private val log = Log(this::class.js.name)
     private val socket: WebSocket = WebSocket(location)
     private val subscriptions = HashMap<Int, MessageSubscription<*, *>>()

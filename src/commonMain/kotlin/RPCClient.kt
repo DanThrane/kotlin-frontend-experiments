@@ -19,24 +19,68 @@ sealed class Result<T> {
     data class Failure<T>(val exception: Throwable) : Result<T>()
 }
 
-interface WSConnection {
-    suspend fun awaitOpen()
-    fun isOpen(): Boolean
+abstract class WSConnection : Connection {
+    abstract suspend fun awaitOpen()
+    abstract fun isOpen(): Boolean
 
-    suspend fun sendFrames(frames: List<ByteArray>)
+    abstract suspend fun sendFrames(frames: List<ByteArray>)
 
-    suspend fun <Req, Res> addSubscription(
+    abstract suspend fun <Req, Res> addSubscription(
         requestId: Int,
         rpc: RPC<Req, Res>,
         handler: suspend (header: ResponseHeader, Result<Res>) -> Unit
     )
 
-    suspend fun removeSubscription(requestId: Int)
+    abstract suspend fun removeSubscription(requestId: Int)
 
-    suspend fun addOnCloseHandler(handler: suspend () -> Unit)
-    suspend fun removeOnCloseHandler(onClose: suspend () -> Unit)
+    abstract suspend fun addOnCloseHandler(handler: suspend () -> Unit)
+    abstract suspend fun removeOnCloseHandler(onClose: suspend () -> Unit)
 
-    suspend fun retrieveRequestId(): Int
+    override suspend fun <Request, Response> call(
+        rpc: RPC<Request, Response>,
+        connectionWithAuth: ConnectionWithAuthorization,
+        header: RequestHeader,
+        request: Request
+    ): Response {
+        val requestId = retrieveRequestId()
+
+        var handler: (suspend (header: ResponseHeader, Result<Response>) -> Unit)? = null
+        addSubscription(requestId, rpc) { responseHeader, result ->
+            rpcClientLog.debug("Waiting for handler")
+            while (handler == null) {
+                // Waiting for handler to be initialized (should be soon)
+            }
+            rpcClientLog.debug("Handler is ready")
+            handler!!(responseHeader, result)
+            rpcClientLog.debug("Called handler")
+        }
+
+        rpcClientLog.debug("Serializing header and body")
+        val frames = listOf(
+            MessageFormat.dump(
+                RequestHeader.serializer(),
+                header
+            ),
+            MessageFormat.dump(
+                rpc.requestSerializer,
+                request
+            )
+        )
+        rpcClientLog.debug("Sending frames")
+        sendFrames(frames)
+        rpcClientLog.debug("Done")
+
+        return suspendCoroutine { cont ->
+            handler = { _, result ->
+                removeSubscription(requestId)
+
+                when (result) {
+                    is Result.Success -> cont.resume(result.result)
+                    is Result.Failure -> cont.resumeWithException(result.exception)
+                }
+            }
+        }
+    }
 }
 
 data class VirtualConnection(
@@ -48,8 +92,10 @@ data class VirtualConnection(
 
 val STATELESS_CONNECTION = VirtualConnection(id = 0, autoReconnect = false, onOpen = {}, onClose = {})
 
+data class VCWithAuth(val virtualConnection: VirtualConnection, val authorization: String? = null)
+
 data class ConnectionWithAuthorization internal constructor(
-    val connection: WSConnection,
+    val connection: Connection,
     val virtualConnection: VirtualConnection = STATELESS_CONNECTION,
     val authorization: String? = null
 )
@@ -59,6 +105,17 @@ expect fun <Req> RPC<Req, *>.logCallStarted(requestMessage: Req)
 expect fun <Res> RPC<*, Res>.logCallEnded(result: Result<Res>, duration: Duration)
 
 private val rpcClientLog = Log("RPCCall")
+
+interface Connection {
+    suspend fun retrieveRequestId(): Int
+
+    suspend fun <Request, Response> call(
+        rpc: RPC<Request, Response>,
+        connectionWithAuth: ConnectionWithAuthorization,
+        header: RequestHeader,
+        request: Request
+    ): Response
+}
 
 suspend fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
@@ -70,47 +127,27 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
 
     val start = MonoClock.markNow()
     logCallStarted(message)
-    val (connection, virtualConnection, auth) = connectionWithAuth
-    val requestId = connection.retrieveRequestId()
 
-    var handler: (suspend (header: ResponseHeader, Result<Res>) -> Unit)? = null
-    connection.addSubscription(requestId, this) { header, result ->
-        rpcClientLog.debug("Waiting for handler")
-        while (handler == null) {
-            // Waiting for handler to be initialized (should be soon)
-        }
-        rpcClientLog.debug("Handler is ready")
-        handler!!(header, result)
-        rpcClientLog.debug("Called handler")
+    val requestHeader = RequestHeader(
+        connectionWithAuth.virtualConnection.id,
+        connectionWithAuth.connection.retrieveRequestId(),
+        requestName,
+        true,
+        connectionWithAuth.authorization
+    )
+
+    val result = try {
+        Result.Success(connectionWithAuth.connection.call(this, connectionWithAuth, requestHeader, message))
+    } catch (ex: Throwable) {
+        Result.Failure<Res>(ex)
     }
 
-    rpcClientLog.debug("Serializing header and body")
-    val obj = RequestHeader(virtualConnection.id, requestId, requestName, true, auth)
-    val frames = listOf(
-        MessageFormat.dump(
-            RequestHeader.serializer(),
-            obj
-        ),
-        MessageFormat.dump(
-            requestSerializer,
-            message
-        )
-    )
-    rpcClientLog.debug("Sending frames")
-    connection.sendFrames(frames)
-    rpcClientLog.debug("Done")
+    val duration = start.elapsedNow()
+    logCallEnded(result, duration)
 
-    return suspendCoroutine { cont ->
-        handler = { header, result ->
-            val duration = start.elapsedNow()
-            logCallEnded(result, duration)
-            connection.removeSubscription(requestId)
-
-            when (result) {
-                is Result.Success -> cont.resume(result.result)
-                is Result.Failure -> cont.resumeWithException(result.exception)
-            }
-        }
+    when (result) {
+        is Result.Success -> return result.result
+        is Result.Failure -> throw result.exception
     }
 }
 

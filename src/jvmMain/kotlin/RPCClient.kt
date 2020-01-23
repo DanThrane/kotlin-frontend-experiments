@@ -13,7 +13,7 @@ class JVMWSConnection(
     hostname: String,
     port: Int,
     path: String = "/"
-) : WSConnection {
+) : WSConnection() {
     private val requestIdCounter = AtomicInteger(0)
 
     // A mutex for sending messages. sendFrames() requires that all messages are sent in a single transaction.
