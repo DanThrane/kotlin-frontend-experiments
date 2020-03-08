@@ -11,6 +11,11 @@ class ModuleContainer(val cliArgs: List<String>) : BaseServer() {
     private val plugins = AttributeStore()
     val attributes = AttributeStore()
     internal val modules = ArrayList<Module>()
+    private val onStartScripts = ArrayList<() -> Unit>()
+
+    fun addOnStartScript(script: () -> Unit) {
+        onStartScripts.add(script)
+    }
 
     fun <Plugin : ContainerPlugin> install(pluginFactory: ContainerPluginFactory<Plugin>) {
         log.info("Installing plugin: ${pluginFactory.javaClass.simpleName}")
@@ -66,6 +71,8 @@ class ModuleContainer(val cliArgs: List<String>) : BaseServer() {
             module.init(this)
             module.controllers.forEach { addController(it) }
         }
+
+        onStartScripts.forEach { it() }
 
         return GlobalScope.launch {
             startServer(httpRequestHandler = this@ModuleContainer, webSocketRequestHandler = this@ModuleContainer)

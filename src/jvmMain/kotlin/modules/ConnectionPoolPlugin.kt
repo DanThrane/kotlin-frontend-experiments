@@ -7,6 +7,8 @@ class ConnectionPoolPlugin(private val container: ModuleContainer) : ContainerPl
     private val localConnections by lazy { container.modules.map { it to LocalConnection(it) }.toMap() }
     private val serviceDiscovery = container.getPlugin(ServiceDiscoveryPlugin)
 
+    // TODO This needs to respect the virtual connections
+
     suspend fun <Request, Response> call(
         rpc: RPC<Request, Response>,
         vcWithAuth: VCWithAuth,

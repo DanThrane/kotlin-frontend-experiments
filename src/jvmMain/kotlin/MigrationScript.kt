@@ -18,6 +18,16 @@ data class MigrationTable(val index: Int, val scriptName: String) {
     }
 }
 
+class MigrationHandlerNamespace(val addScript: (name: String, script: suspend (PostgresConnection) -> Unit) -> Unit)
+
+fun MigrationHandler.namespaced(namespace: String, block: MigrationHandlerNamespace.() -> Unit) {
+    MigrationHandlerNamespace(
+        addScript = { name, script ->
+            addScript("$namespace/$name", script)
+        }
+    ).block()
+}
+
 class MigrationHandler(private val db: PostgresConnectionPool) {
     private val migrations = ArrayList<MigrationScript>()
 
@@ -25,10 +35,15 @@ class MigrationHandler(private val db: PostgresConnectionPool) {
         migrations.add(MigrationScript(name, script))
     }
 
-    @Serializable private data class CountTable(val count: Long?)
+    @Serializable
+    private data class CountTable(val count: Long?)
 
-    @Serializable private data class FindTableQuery(val schema: String, val table: String)
-    @Serializable private data class FindTableResponse(val exists: Boolean)
+    @Serializable
+    private data class FindTableQuery(val schema: String, val table: String)
+
+    @Serializable
+    private data class FindTableResponse(val exists: Boolean)
+
     private val findTable = PreparedStatement(
         """
             select exists(
