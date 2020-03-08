@@ -31,18 +31,9 @@ object ConnectionController : Controller() {
     }
 
     internal val prehandler: PreHandler = handler@{ rpc, header, message ->
-        val connectionId = header.connectionId
-
-        // We consider conn 0 to be implicitly initialized by WebSocket open
-        if (connectionId == 0) return@handler PreHandlerAction.Continue
-
         val socketId = socketId
 
         val connsForSocket = knownConnections[socketId] ?: emptySet()
-        if (connectionId !in connsForSocket) {
-            PreHandlerAction.Terminate(ResponseCode.BAD_REQUEST)
-        } else {
-            PreHandlerAction.Continue
-        }
+        PreHandlerAction.Continue
     }
 }

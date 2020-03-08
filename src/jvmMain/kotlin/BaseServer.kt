@@ -128,7 +128,6 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
                             didHandleMessage = true
                             sendMessage(
                                 ResponseHeader(
-                                    requestHeader.connectionId,
                                     requestHeader.requestId,
                                     handlerAction.code.statusCode,
                                     false
@@ -166,7 +165,6 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
             didHandleMessage = true
             sendMessage(
                 ResponseHeader(
-                    requestHeader.connectionId,
                     requestHeader.requestId,
                     ResponseCode.BAD_REQUEST.statusCode,
                     false
@@ -178,7 +176,6 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
         if (!didHandleMessage) {
             sendMessage(
                 ResponseHeader(
-                    requestHeader.connectionId,
                     requestHeader.requestId,
                     ResponseCode.NOT_FOUND.statusCode,
                     false
@@ -242,7 +239,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
             )
 
             sendMessage(
-                ResponseHeader(header.connectionId, header.requestId, statusCode.statusCode, true),
+                ResponseHeader(header.requestId, statusCode.statusCode, true),
                 ResponseHeader.serializer()
             )
             sendMessage(response, rpc.responseSerializer)
@@ -255,7 +252,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
             }
 
             sendMessage(
-                ResponseHeader(header.connectionId, header.requestId, statusCode.statusCode, false),
+                ResponseHeader(header.requestId, statusCode.statusCode, false),
                 ResponseHeader.serializer()
             )
         }

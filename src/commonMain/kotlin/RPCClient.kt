@@ -6,7 +6,6 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration
-import kotlin.time.ExperimentalTime
 import kotlin.time.MonoClock
 
 data class MessageSubscription<Req, Res>(
@@ -83,20 +82,8 @@ abstract class WSConnection : Connection {
     }
 }
 
-data class VirtualConnection(
-    internal val id: Int,
-    internal val autoReconnect: Boolean,
-    internal val onOpen: suspend () -> Unit,
-    internal val onClose: suspend () -> Unit
-)
-
-val STATELESS_CONNECTION = VirtualConnection(id = 0, autoReconnect = false, onOpen = {}, onClose = {})
-
-data class VCWithAuth(val virtualConnection: VirtualConnection, val authorization: String? = null)
-
 data class ConnectionWithAuthorization internal constructor(
     val connection: Connection,
-    val virtualConnection: VirtualConnection = STATELESS_CONNECTION,
     val authorization: String? = null
 )
 
@@ -129,7 +116,6 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
     logCallStarted(message)
 
     val requestHeader = RequestHeader(
-        connectionWithAuth.virtualConnection.id,
         connectionWithAuth.connection.retrieveRequestId(),
         requestName,
         true,
@@ -155,7 +141,6 @@ class WSConnectionPool(
     private val connectionFactory: () -> WSConnection,
     private val poolSize: Int = 4
 ) {
-    private var connectionIdCounter: Int = 0
     private val pool = Array<PooledConnection?>(poolSize) { null }
     private val queue = ArrayList<Continuation<Pair<Int, WSConnection>>>()
 
@@ -168,7 +153,7 @@ class WSConnectionPool(
                     val connection = connectionFactory()
                     connection.awaitOpen()
 
-                    pool[idx] = PooledConnection(connection, true, HashSet())
+                    pool[idx] = PooledConnection(connection, true)
                     return Pair(idx, connection)
                 }
 
@@ -198,84 +183,21 @@ class WSConnectionPool(
         }
     }
 
-    suspend fun openConnection(
-        autoReconnect: Boolean = true,
-        onOpen: suspend () -> Unit = {},
-        onClose: suspend () -> Unit = {}
-    ): VirtualConnection {
-        val vc = VirtualConnection(
-            id = connectionIdCounter++,
-            autoReconnect = autoReconnect,
-            onOpen = onOpen,
-            onClose = onClose
-        )
-
-        return openConnection(vc)
-    }
-
-    private suspend fun openConnection(vc: VirtualConnection): VirtualConnection {
-        val (idx, conn) = borrowConnection()
-        return try {
-            conn.addOnCloseHandler {
-                vc.onClose()
-                if (vc.autoReconnect) {
-                    openConnection(vc)
-                }
-            }
-
-            pool[idx]!!.virtualConnections += vc
-            Connections.open.call(
-                ConnectionWithAuthorization(conn),
-                OpenConnectionSchema(vc.id)
-            )
-            vc.onOpen()
-
-            vc
-        } finally {
-            returnConnection(idx)
-        }
-    }
-
-    suspend fun closeConnection(vc: VirtualConnection) {
-        for (conn in pool) {
-            if (conn === null) continue
-
-            val didRemove = conn.virtualConnections.remove(vc)
-            if (didRemove) {
-                if (conn.conn.isOpen()) {
-                    try {
-                        Connections.close.call(
-                            ConnectionWithAuthorization(conn.conn),
-                            CloseConnectionSchema(vc.id)
-                        )
-                    } finally {
-                        vc.onClose()
-                    }
-                }
-
-                conn.conn.removeOnCloseHandler(vc.onClose)
-                break
-            }
-        }
-    }
-
     companion object {
         private data class PooledConnection(
             val conn: WSConnection,
-            var inUse: Boolean,
-            val virtualConnections: MutableSet<VirtualConnection>
+            var inUse: Boolean
         )
     }
 }
 
 suspend fun <R> WSConnectionPool.useConnection(
-    virtualConnection: VirtualConnection = STATELESS_CONNECTION,
     authorization: String? = null,
     block: suspend (ConnectionWithAuthorization) -> R
 ): R {
     val (idx, conn) = borrowConnection()
     return try {
-        block(ConnectionWithAuthorization(conn, virtualConnection, authorization))
+        block(ConnectionWithAuthorization(conn, authorization))
     } finally {
         returnConnection(idx)
     }
@@ -284,10 +206,9 @@ suspend fun <R> WSConnectionPool.useConnection(
 suspend fun <Req, Res> RPC<Req, Res>.call(
     pool: WSConnectionPool,
     message: Req,
-    vc: VirtualConnection = STATELESS_CONNECTION,
     auth: String? = null
 ): Res {
-    return pool.useConnection(vc) { conn ->
+    return pool.useConnection { conn ->
         call(conn.copy(authorization = auth), message)
     }
 }
