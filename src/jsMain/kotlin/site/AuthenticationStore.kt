@@ -19,7 +19,6 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlin.js.Date
-import kotlin.time.measureTime
 
 object AuthenticationStore {
     private val log = Log("AuthenticationStore")

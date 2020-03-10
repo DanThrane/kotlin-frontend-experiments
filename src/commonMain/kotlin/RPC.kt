@@ -31,24 +31,6 @@ class RPC<Req, Res>(
     override fun toString() = "RPC($requestName)"
 }
 
-@Serializable
-data class OpenConnectionSchema(
-    val id: Int
-)
-
-@Serializable
-class CloseConnectionSchema(
-    val id: Int
-)
-
-@Serializable
-object EmptyMessage
-
-object Connections : RPCNamespace("connections") {
-    val open by call(OpenConnectionSchema.serializer(), EmptyMessage.serializer())
-    val close by call(CloseConnectionSchema.serializer(), EmptyMessage.serializer())
-}
-
 enum class ResponseCode(val statusCode: Byte) {
     OK(0),
     BAD_REQUEST(1),

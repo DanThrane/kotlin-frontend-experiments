@@ -25,11 +25,6 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
     private val preHandlers = ArrayList<PreHandler>()
     private val postHandlers = ArrayList<PostHandler>()
 
-    init {
-        addController(ConnectionController)
-        addMiddlewarePreHandling(ConnectionController.prehandler)
-    }
-
     protected fun addController(controller: Controller) {
         controllers.add(controller)
         controller.configure()

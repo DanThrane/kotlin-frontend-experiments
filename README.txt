@@ -112,3 +112,6 @@ Requires good and predictable network code to speak to external systems.
 
 It would also be nice with systems that aid in keeping state in-sync between multiple systems. This is likely too hard
 to generalize.
+
+Pagination
+========================================================================================================================

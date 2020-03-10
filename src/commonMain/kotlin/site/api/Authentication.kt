@@ -1,6 +1,7 @@
 package dk.thrane.playground.site.api
 
 import dk.thrane.playground.*
+import dk.thrane.playground.EmptyMessage
 import kotlinx.serialization.Serializable
 
 object Authentication : RPCNamespace("authentication") {
