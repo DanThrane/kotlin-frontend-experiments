@@ -1,7 +1,6 @@
 package dk.thrane.playground
 
 import kotlin.time.Duration
-import kotlin.time.ExperimentalTime
 
 private val callLogger = Log("RPCCall")
 
@@ -10,7 +9,7 @@ actual fun <Req> RPC<Req, *>.logCallStarted(requestMessage: Req) {
 }
 
 actual fun <Res> RPC<*, Res>.logCallEnded(
-    result: Result<Res>,
+    result: RPCResult<Res>,
     duration: Duration
 ) {
     callLogger.info("<-- $requestName ${duration.inMilliseconds}ms ($result)")

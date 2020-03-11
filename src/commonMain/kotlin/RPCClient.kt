@@ -1,7 +1,6 @@
 package dk.thrane.playground
 
 import dk.thrane.playground.serialization.MessageFormat
-import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -10,12 +9,22 @@ import kotlin.time.MonoClock
 
 data class MessageSubscription<Req, Res>(
     val rpc: RPC<Req, Res>,
-    val handler: suspend (header: ResponseHeader, response: Result<Res>) -> Unit
+    val handler: suspend (header: ResponseHeader, response: RPCResult<Res>) -> Unit
 )
 
-sealed class Result<T> {
-    data class Success<T>(val result: T) : Result<T>()
-    data class Failure<T>(val exception: Throwable) : Result<T>()
+sealed class RPCResult<T> {
+    data class Success<T>(val result: T) : RPCResult<T>()
+    data class Failure<T>(val exception: Throwable) : RPCResult<T>()
+
+    companion object {
+        inline fun <T> runCode(block: () -> T): RPCResult<T> {
+            return try {
+                Success(block())
+            } catch (ex: Throwable) {
+                Failure(ex)
+            }
+        }
+    }
 }
 
 abstract class WSConnection : Connection {
@@ -27,7 +36,7 @@ abstract class WSConnection : Connection {
     abstract suspend fun <Req, Res> addSubscription(
         requestId: Int,
         rpc: RPC<Req, Res>,
-        handler: suspend (header: ResponseHeader, Result<Res>) -> Unit
+        handler: suspend (header: ResponseHeader, RPCResult<Res>) -> Unit
     )
 
     abstract suspend fun removeSubscription(requestId: Int)
@@ -43,7 +52,7 @@ abstract class WSConnection : Connection {
     ): Response {
         val requestId = retrieveRequestId()
 
-        var handler: (suspend (header: ResponseHeader, Result<Response>) -> Unit)? = null
+        var handler: (suspend (header: ResponseHeader, RPCResult<Response>) -> Unit)? = null
         addSubscription(requestId, rpc) { responseHeader, result ->
             rpcClientLog.debug("Waiting for handler")
             while (handler == null) {
@@ -74,8 +83,8 @@ abstract class WSConnection : Connection {
                 removeSubscription(requestId)
 
                 when (result) {
-                    is Result.Success -> cont.resume(result.result)
-                    is Result.Failure -> cont.resumeWithException(result.exception)
+                    is RPCResult.Success -> cont.resume(result.result)
+                    is RPCResult.Failure -> cont.resumeWithException(result.exception)
                 }
             }
         }
@@ -86,14 +95,16 @@ data class ConnectionWithAuthorization internal constructor(
     val connection: Connection,
     val authorization: String? = null
 )
-
 expect fun <Req> RPC<Req, *>.logCallStarted(requestMessage: Req)
 
-expect fun <Res> RPC<*, Res>.logCallEnded(result: Result<Res>, duration: Duration)
+expect fun <Res> RPC<*, Res>.logCallEnded(result: RPCResult<Res>, duration: Duration)
 
 private val rpcClientLog = Log("RPCCall")
 
 interface Connection {
+    val withoutAuthentication: ConnectionWithAuthorization
+        get() = ConnectionWithAuthorization(this)
+
     suspend fun retrieveRequestId(): Int
 
     suspend fun <Request, Response> call(
@@ -104,14 +115,21 @@ interface Connection {
     ): Response
 }
 
+typealias Authenticator = suspend (connection: Connection) -> ConnectionWithAuthorization
+
+suspend inline fun <Req, Res> RPC<Req, Res>.call(
+    connection: Connection,
+    authenticator: Authenticator,
+    message: Req
+): Res {
+    val connWithAuth = authenticator(connection)
+    return call(connWithAuth, message)
+}
+
 suspend fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
     message: Req
 ): Res {
-    // TODO:
-    //  This method returns a deferred such that the connection can be returned quickly. We only need the connection
-    //  while we are sending data. The connection already handles multiple incoming responses.
-
     val start = MonoClock.markNow()
     logCallStarted(message)
 
@@ -122,93 +140,15 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
         connectionWithAuth.authorization
     )
 
-    val result = try {
-        Result.Success(connectionWithAuth.connection.call(this, connectionWithAuth, requestHeader, message))
-    } catch (ex: Throwable) {
-        Result.Failure<Res>(ex)
+    val result = RPCResult.runCode {
+        connectionWithAuth.connection.call(this, connectionWithAuth, requestHeader, message)
     }
 
     val duration = start.elapsedNow()
     logCallEnded(result, duration)
 
     when (result) {
-        is Result.Success -> return result.result
-        is Result.Failure -> throw result.exception
-    }
-}
-
-class WSConnectionPool(
-    private val connectionFactory: () -> WSConnection,
-    private val poolSize: Int = 4
-) {
-    private val pool = Array<PooledConnection?>(poolSize) { null }
-    private val queue = ArrayList<Continuation<Pair<Int, WSConnection>>>()
-
-    suspend fun borrowConnection(): Pair<Int, WSConnection> {
-        for (idx in pool.indices) {
-            val pooledConnection = pool[idx]
-
-            when {
-                pooledConnection == null -> {
-                    val connection = connectionFactory()
-                    connection.awaitOpen()
-
-                    pool[idx] = PooledConnection(connection, true)
-                    return Pair(idx, connection)
-                }
-
-                !pooledConnection.conn.isOpen() -> {
-                    pool[idx] = null
-                    return borrowConnection()
-                }
-
-                !pooledConnection.inUse -> {
-                    return Pair(idx, pooledConnection.conn)
-                }
-            }
-        }
-
-        return suspendCoroutine { cont ->
-            queue.add(cont)
-        }
-    }
-
-    fun returnConnection(idx: Int) {
-        val conn = pool.getOrNull(idx) ?: return
-        conn.inUse = false
-
-        if (queue.isNotEmpty()) {
-            val continuation = queue.removeAt(0)
-            continuation.resume(Pair(idx, conn.conn))
-        }
-    }
-
-    companion object {
-        private data class PooledConnection(
-            val conn: WSConnection,
-            var inUse: Boolean
-        )
-    }
-}
-
-suspend fun <R> WSConnectionPool.useConnection(
-    authorization: String? = null,
-    block: suspend (ConnectionWithAuthorization) -> R
-): R {
-    val (idx, conn) = borrowConnection()
-    return try {
-        block(ConnectionWithAuthorization(conn, authorization))
-    } finally {
-        returnConnection(idx)
-    }
-}
-
-suspend fun <Req, Res> RPC<Req, Res>.call(
-    pool: WSConnectionPool,
-    message: Req,
-    auth: String? = null
-): Res {
-    return pool.useConnection { conn ->
-        call(conn.copy(authorization = auth), message)
+        is RPCResult.Success -> return result.result
+        is RPCResult.Failure -> throw result.exception
     }
 }

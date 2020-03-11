@@ -62,10 +62,10 @@ class JSWSConnection internal constructor(
                     }
 
                     val result = if (statusCode == ResponseCode.OK) {
-                        Result.Success(body)
+                        RPCResult.Success(body)
                     } else {
                         @Suppress("ThrowableNotThrown")
-                        Result.Failure<Any?>(RPCException(statusCode, statusCode.name))
+                        RPCResult.Failure<Any?>(RPCException(statusCode, statusCode.name))
                     }
 
                     GlobalScope.launch {
@@ -104,7 +104,7 @@ class JSWSConnection internal constructor(
     override suspend fun <Req, Res> addSubscription(
         requestId: Int,
         rpc: RPC<Req, Res>,
-        handler: suspend (header: ResponseHeader, Result<Res>) -> Unit
+        handler: suspend (header: ResponseHeader, RPCResult<Res>) -> Unit
     ) {
         @Suppress("UNCHECKED_CAST")
         subscriptions[requestId] = MessageSubscription(rpc, handler)

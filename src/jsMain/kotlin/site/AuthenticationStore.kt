@@ -36,7 +36,7 @@ object AuthenticationStore {
 
     suspend fun login(username: String, password: String) {
         val resp = Authentication.login.call(
-            connectionPool,
+            connection.withoutAuthentication,
             LoginRequest(username, password)
         )
         mutableRefreshToken.currentValue = resp.token
@@ -46,7 +46,7 @@ object AuthenticationStore {
         val capturedToken = refreshToken.currentValue
         if (capturedToken != null) {
             Authentication.logout.call(
-                connectionPool,
+                connection.withoutAuthentication,
                 LogoutRequest(capturedToken)
             )
             mutableRefreshToken.currentValue = null
@@ -77,7 +77,7 @@ object AuthenticationStore {
     private suspend fun refreshAccessToken(): String {
         return Authentication.refresh
             .call(
-                connectionPool,
+                connection.withoutAuthentication,
                 RefreshRequest(
                     refreshToken.currentValue ?: throw RPCException(
                         ResponseCode.UNAUTHORIZED,

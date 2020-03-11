@@ -216,11 +216,3 @@ class WebSocketClient(
     }
 }
 
-fun main() {
-    val connPool = WSConnectionPool({ JVMWSConnection("localhost", 8080) })
-    runBlocking {
-        repeat(50) {
-            Authentication.login.call(connPool, LoginRequest("foo", "bar"))
-        }
-    }
-}
