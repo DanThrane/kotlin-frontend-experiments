@@ -93,7 +93,7 @@ class MessageFormat(
         }
 
         override fun encodeByteElement(descriptor: SerialDescriptor, index: Int, value: Byte) {
-            fieldBuilder[index] = BinaryField(byteArrayOf(value))
+            fieldBuilder[index] = ByteField(value)
         }
 
         override fun encodeCharElement(descriptor: SerialDescriptor, index: Int, value: Char) {
@@ -116,36 +116,6 @@ class MessageFormat(
             fieldBuilder[index] = LongField(value)
         }
 
-        override fun <T : Any> encodeNullableSerializableElement(
-            descriptor: SerialDescriptor,
-            index: Int,
-            serializer: SerializationStrategy<T>,
-            value: T?
-        ) {
-            if (value == null) {
-                fieldBuilder[index] = NullField
-            } else {
-                val writer = internalDump(serializer.descriptor)
-                serializer.serialize(writer, value)
-                fieldBuilder[index] = ObjectField(writer.fieldBuilder)
-            }
-        }
-
-        override fun <T> encodeSerializableElement(
-            descriptor: SerialDescriptor,
-            index: Int,
-            serializer: SerializationStrategy<T>,
-            value: T
-        ) {
-            if (value == null) {
-                fieldBuilder[index] = NullField
-            } else {
-                val writer = internalDump(serializer.descriptor)
-                serializer.serialize(writer, value)
-                fieldBuilder[index] = ObjectField(writer.fieldBuilder)
-            }
-        }
-
         override fun encodeShortElement(descriptor: SerialDescriptor, index: Int, value: Short) {
             fieldBuilder[index] = IntField(value.toInt())
         }
@@ -156,6 +126,75 @@ class MessageFormat(
 
         override fun encodeUnitElement(descriptor: SerialDescriptor, index: Int) {
             fieldBuilder[index] = ObjectField(emptyList())
+        }
+
+        private fun encodePrimitiveValue(index: Int, value: Any?) {
+            val field = when (value) {
+                null -> NullField
+                is Boolean -> BooleanField(value)
+                is Byte -> ByteField(value)
+                is Char -> BinaryField("$value".encodeToByteArray())
+                is Double -> DoubleField(value)
+                is Float -> DoubleField(value.toDouble())
+                is Int -> IntField(value)
+                is Long -> LongField(value)
+                is Short -> IntField(value.toInt())
+                is String -> BinaryField(value.encodeToByteArray())
+                Unit -> ObjectField(emptyList())
+                else -> throw IllegalStateException("non primitive value passed to encodePrimitiveValue($value)")
+            }
+
+            fieldBuilder[index] = field
+        }
+
+        override fun <T : Any> encodeNullableSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            serializer: SerializationStrategy<T>,
+            value: T?
+        ) {
+            when (serializer.descriptor.kind) {
+                is PrimitiveKind -> encodePrimitiveValue(index, value)
+
+                UnionKind.ENUM_KIND -> {
+                    encodePrimitiveValue(index, (value as Enum<*>).ordinal)
+                }
+
+                else -> {
+                    if (value == null) {
+                        fieldBuilder[index] = NullField
+                    } else {
+                        val writer = internalDump(serializer.descriptor)
+                        serializer.serialize(writer, value)
+                        fieldBuilder[index] = ObjectField(writer.fieldBuilder)
+                    }
+                }
+            }
+        }
+
+        override fun <T> encodeSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            serializer: SerializationStrategy<T>,
+            value: T
+        ) {
+            when (serializer.descriptor.kind) {
+                is PrimitiveKind -> encodePrimitiveValue(index, value)
+
+                UnionKind.ENUM_KIND -> {
+                    encodePrimitiveValue(index, (value as Enum<*>).ordinal)
+                }
+
+                else -> {
+                    if (value == null) {
+                        fieldBuilder[index] = NullField
+                    } else {
+                        val writer = internalDump(serializer.descriptor)
+                        serializer.serialize(writer, value)
+                        fieldBuilder[index] = ObjectField(writer.fieldBuilder)
+                    }
+                }
+            }
         }
 
         override fun endStructure(descriptor: SerialDescriptor) {
@@ -175,20 +214,23 @@ class MessageFormat(
             return field.type != FieldType.NULL
         }
 
-        private fun unexpectedUsage(): Nothing = throw IllegalStateException("Did not expect to be called")
-
-        override fun decodeBoolean(): Boolean = unexpectedUsage()
-        override fun decodeByte(): Byte = unexpectedUsage()
-        override fun decodeChar(): Char = unexpectedUsage()
-        override fun decodeDouble(): Double = unexpectedUsage()
-        override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = unexpectedUsage()
-        override fun decodeFloat(): Float = unexpectedUsage()
-        override fun decodeInt(): Int = unexpectedUsage()
-        override fun decodeLong(): Long = unexpectedUsage()
-        override fun decodeNull(): Nothing? = unexpectedUsage()
-        override fun decodeShort(): Short = unexpectedUsage()
-        override fun decodeString(): String = unexpectedUsage()
-        override fun decodeUnit() = unexpectedUsage()
+        override fun decodeBoolean(): Boolean = (field as BooleanField).value
+        override fun decodeByte(): Byte = (field as BinaryField).value.single()
+        override fun decodeChar(): Char = (field as BinaryField).value.decodeToString().single()
+        override fun decodeDouble(): Double = (field as DoubleField).value
+        override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = (field as IntField).value
+        override fun decodeFloat(): Float = (field as DoubleField).value.toFloat()
+        override fun decodeInt(): Int = (field as IntField).value
+        override fun decodeLong(): Long = (field as LongField).value
+        override fun decodeNull(): Nothing? {
+            require(field is NullField)
+            return null
+        }
+        override fun decodeShort(): Short = (field as IntField).value.toShort()
+        override fun decodeString(): String = (field as BinaryField).value.decodeToString()
+        override fun decodeUnit() {
+            require(field is ObjectField)
+        }
     }
 
     private inner class ObjectReader(private val field: ObjectField) : CompositeDecoder {
@@ -202,7 +244,6 @@ class MessageFormat(
         override fun decodeSequentially(): Boolean = true
 
         override fun decodeElementIndex(descriptor: SerialDescriptor): Int {
-            log.warn("Why am I being called?")
             if (idx < descriptor.elementsCount) {
                 return idx++
             } else {
@@ -232,7 +273,7 @@ class MessageFormat(
             deserializer: DeserializationStrategy<T?>
         ): T? {
             if (field.fields[index].type == FieldType.NULL) return null
-            return deserializer.deserialize(RootDecoder(field.getObject(index)))
+            return deserializer.deserialize(RootDecoder(field.fields[index]))
         }
 
         override fun <T> decodeSerializableElement(
@@ -242,7 +283,7 @@ class MessageFormat(
         ): T {
             // This doesn't seem correct. For some reason it works.
             if (field.fields[index].type == FieldType.NULL) return null as T
-            return deserializer.deserialize(RootDecoder(field.getObject(index)))
+            return deserializer.deserialize(RootDecoder(field.fields[index]))
         }
 
         override fun endStructure(descriptor: SerialDescriptor) {

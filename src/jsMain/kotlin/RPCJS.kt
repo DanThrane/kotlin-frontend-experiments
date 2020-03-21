@@ -51,6 +51,7 @@ class JSWSConnection internal constructor(
             ) {
                 val requestId = newCapturedResponseHandler.requestId
                 val statusCode = ResponseCode.valueOf(newCapturedResponseHandler.statusCode)
+
                 @Suppress("UNCHECKED_CAST")
                 val handler = subscriptions[requestId] as MessageSubscription<Any?, Any?>?
 

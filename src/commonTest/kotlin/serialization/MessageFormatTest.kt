@@ -23,6 +23,16 @@ data class ListOfGeneric<T>(val dummy: Int, val list: List<T>)
 @Serializable
 data class NullableGeneric<T>(val value: T?)
 
+@Serializable
+data class PrimitiveNullable(val value: String?)
+
+@Serializable
+data class EnumTest(val enum: MyEnum)
+
+enum class MyEnum {
+    A, B, C
+}
+
 class MessageFormatTest {
     @Test
     fun testSimpleWrapper() {
@@ -138,5 +148,44 @@ class MessageFormatTest {
                 MessageFormat.dump(ListOfGeneric.serializer(Node.serializer()), wrapper)
             )
         )
+    }
+
+    @Test
+    fun testPrimitiveNullable() {
+        run {
+            val wrapper = PrimitiveNullable("Hello, World")
+            assertEquals(
+                wrapper,
+                MessageFormat.load(
+                    PrimitiveNullable.serializer(),
+                    MessageFormat.dump(PrimitiveNullable.serializer(), wrapper)
+                )
+            )
+        }
+       
+        run {
+            val wrapper = PrimitiveNullable(null)
+            assertEquals(
+                wrapper,
+                MessageFormat.load(
+                    PrimitiveNullable.serializer(),
+                    MessageFormat.dump(PrimitiveNullable.serializer(), wrapper)
+                )
+            )
+        }
+    }
+
+    @Test
+    fun testEnum() {
+        MyEnum.values().forEach { e ->
+            val wrapper = EnumTest(e)
+            assertEquals(
+                wrapper,
+                MessageFormat.load(
+                    EnumTest.serializer(),
+                    MessageFormat.dump(EnumTest.serializer(), wrapper)
+                )
+            )
+        }
     }
 }
