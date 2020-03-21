@@ -32,6 +32,35 @@ internal class PostgresRootDecoder(override val context: SerialModule, private v
     override fun decodeUnit() = unexpected()
 }
 
+internal class PrimitiveDecoder(val value: Any?, override val context: SerialModule = EmptyModule) : Decoder {
+    override val updateMode: UpdateMode = UpdateMode.BANNED
+
+    override fun beginStructure(descriptor: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder =
+        throw IllegalStateException("Not supported")
+
+    override fun decodeBoolean(): Boolean = value as Boolean
+    override fun decodeByte(): Byte = value as Byte
+    override fun decodeChar(): Char = value as Char
+    override fun decodeDouble(): Double = value as Double
+    override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = value as Int
+    override fun decodeFloat(): Float = value as Float
+    override fun decodeInt(): Int = value as Int
+    override fun decodeLong(): Long = value as Long
+    override fun decodeShort(): Short = value as Short
+    override fun decodeString(): String = value as String
+
+    override fun decodeNotNullMark(): Boolean = value != null
+
+    override fun decodeNull(): Nothing? {
+        require(value == null)
+        return null
+    }
+
+    override fun decodeUnit() {
+        require(value == Unit)
+    }
+}
+
 internal class PostgresDecoder(private val row: DBRow, override val context: SerialModule) : CompositeDecoder {
     override val updateMode: UpdateMode = UpdateMode.BANNED
 
@@ -66,16 +95,24 @@ internal class PostgresDecoder(private val row: DBRow, override val context: Ser
         @Suppress("UNCHECKED_CAST")
         if (row.getUntyped(index) == null) return null as T
 
-        if (deserializer.descriptor.kind == StructureKind.LIST) {
-            if (row.columnDefinitions[index].type == PGType.Bytea) {
-                // TODO How to check if this is actually correct output type?
-                @Suppress("UNCHECKED_CAST")
-                return row[index, PGType.Bytea] as T
+        when (deserializer.descriptor.kind) {
+            StructureKind.LIST -> {
+                if (row.columnDefinitions[index].type == PGType.Bytea) {
+                    // TODO How to check if this is actually correct output type?
+                    @Suppress("UNCHECKED_CAST")
+                    return row[index, PGType.Bytea] as T
+                }
+                TODO()
             }
-            TODO()
-        } else {
-            throw IllegalStateException("Cannot deserialize row (unsupported): " +
-                    "${deserializer.descriptor} at index $index")
+            is PrimitiveKind -> {
+                return deserializer.deserialize(PrimitiveDecoder(row.getUntyped(index)))
+            }
+            else -> {
+                throw IllegalStateException(
+                    "Cannot deserialize row (unsupported): " +
+                            "${deserializer.descriptor} at index $index"
+                )
+            }
         }
     }
 
@@ -108,20 +145,40 @@ internal fun <T> Flow<DBRow>.mapRows(serializer: KSerializer<T>): Flow<T> {
     }
 }
 
-@OptIn(InternalSerializationApi::class)
-internal class PostgresByteaEncoder(private val target: ByteArray) : TaggedEncoder<Int>() {
-    override fun SerialDescriptor.getTag(index: Int): Int = index
-
-    override fun encodeTaggedByte(tag: Int, value: Byte) {
-        target[tag] = value
+internal class PostgresRootEncoder(
+    private val target: Array<Any?>,
+    private val headers: List<PGType<*>>,
+    private val nameToIndex: Map<String, List<Int>>,
+    override val context: SerialModule = EmptyModule
+) : Encoder {
+    override fun beginStructure(
+        descriptor: SerialDescriptor,
+        vararg typeSerializers: KSerializer<*>
+    ): CompositeEncoder {
+        return PostgresRowEncoder(target, headers, nameToIndex, context)
     }
+
+    private fun unexpected(): Nothing = throw IllegalStateException("Unexpected")
+
+    override fun encodeBoolean(value: Boolean) = unexpected()
+    override fun encodeByte(value: Byte) = unexpected()
+    override fun encodeChar(value: Char) = unexpected()
+    override fun encodeDouble(value: Double) = unexpected()
+    override fun encodeEnum(enumDescriptor: SerialDescriptor, index: Int) = unexpected()
+    override fun encodeFloat(value: Float) = unexpected()
+    override fun encodeInt(value: Int) = unexpected()
+    override fun encodeLong(value: Long) = unexpected()
+    override fun encodeNull() = unexpected()
+    override fun encodeShort(value: Short) = unexpected()
+    override fun encodeString(value: String) = unexpected()
+    override fun encodeUnit() = unexpected()
 }
 
 internal class PostgresRowEncoder(
     private val target: Array<Any?>,
     private val headers: List<PGType<*>>,
     private val nameToIndex: Map<String, List<Int>>,
-    override val context: SerialModule
+    override val context: SerialModule = EmptyModule
 ) : CompositeEncoder {
     init {
         require(headers.size == target.size)
@@ -167,7 +224,9 @@ internal class PostgresRowEncoder(
         serializer: SerializationStrategy<T>,
         value: T?
     ) {
-        if (serializer.descriptor.kind == UnionKind.ENUM_KIND && value is Enum<*>) {
+        if (value == null) {
+            nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = null }
+        } else if (serializer.descriptor.kind == UnionKind.ENUM_KIND && value is Enum<*>) {
             val name = descriptor.getElementName(index)
             val ordinal = value.ordinal
             when (headers[index]) {
@@ -191,7 +250,24 @@ internal class PostgresRowEncoder(
         serializer: SerializationStrategy<T>,
         value: T
     ) {
-        encodeNullableSerializableElement(descriptor, index, serializer, value)
+        if (value == null) {
+            nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = null }
+        } else if (serializer.descriptor.kind == UnionKind.ENUM_KIND && value is Enum<*>) {
+            val name = descriptor.getElementName(index)
+            val ordinal = value.ordinal
+            when (headers[index]) {
+                PGType.Int2 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toShort() }
+                PGType.Int4 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
+                PGType.Int8 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toLong() }
+                PGType.Numeric -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
+                PGType.Text -> nameToIndex.getValue(name).forEach { i -> target[i] = value.name }
+                else -> {
+                    throw IllegalArgumentException("Bad type: ${headers[index]}")
+                }
+            }
+        } else {
+            throw IllegalStateException("Unsupported type (idx = $index): $value")
+        }
     }
 
     override fun encodeShortElement(descriptor: SerialDescriptor, index: Int, value: Short) {

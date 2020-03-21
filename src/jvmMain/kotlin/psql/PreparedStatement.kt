@@ -36,7 +36,11 @@ class PreparedStatement<Input, Output>(
                     PrimitiveKind.STRING -> PGType.Text
                     StructureKind.CLASS -> TODO()
                     StructureKind.LIST -> {
-                        TODO("Handle bytea")
+                        if (elem.elementDescriptors().single().kind == PrimitiveKind.BYTE) {
+                            PGType.Bytea
+                        } else {
+                            TODO()
+                        }
                     }
                     StructureKind.MAP -> TODO()
                     StructureKind.OBJECT -> TODO()
@@ -105,7 +109,7 @@ class PreparedStatement<Input, Output>(
                     statementId,
                     rows.map {
                         val target = arrayOfNulls<Any>(header.size)
-                        PostgresRowEncoder(target, header, parameterNamesToIndex).encode(inSerializer, it)
+                        PostgresRootEncoder(target, header, parameterNamesToIndex).encode(inSerializer, it)
                         target.toList()
                     }
                 ).mapRows(outSerializer)
