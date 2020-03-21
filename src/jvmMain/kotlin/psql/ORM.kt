@@ -218,30 +218,52 @@ internal class PostgresRowEncoder(
         nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
     }
 
+    private fun encodeAnyElement(
+        value: Any?,
+        descriptor: SerialDescriptor,
+        index: Int,
+        serializer: SerializationStrategy<*>
+    ) {
+        val name = descriptor.getElementName(index)
+
+        when {
+            value == null -> {
+                nameToIndex.getValue(name).forEach { i -> target[i] = null }
+            }
+
+            serializer.descriptor.kind == UnionKind.ENUM_KIND && value is Enum<*> -> {
+                val ordinal = value.ordinal
+                when (headers[index]) {
+                    PGType.Int2 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toShort() }
+                    PGType.Int4 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
+                    PGType.Int8 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toLong() }
+                    PGType.Numeric -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
+                    PGType.Text -> nameToIndex.getValue(name).forEach { i -> target[i] = value.name }
+                    else -> {
+                        throw IllegalArgumentException("Bad type: ${headers[index]}")
+                    }
+                }
+            }
+
+            serializer.descriptor.kind is StructureKind.LIST &&
+                    serializer.descriptor.getElementDescriptor(0).kind == PrimitiveKind.BYTE -> {
+                val byteArray = value as? ByteArray ?: throw IllegalStateException("Expected byte array for index $index")
+                nameToIndex.getValue(name).forEach { i -> target[i] = byteArray }
+            }
+
+            else -> {
+                throw IllegalStateException("Unsupported type (idx = $index): $value")
+            }
+        }
+    }
+
     override fun <T : Any> encodeNullableSerializableElement(
         descriptor: SerialDescriptor,
         index: Int,
         serializer: SerializationStrategy<T>,
         value: T?
     ) {
-        if (value == null) {
-            nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = null }
-        } else if (serializer.descriptor.kind == UnionKind.ENUM_KIND && value is Enum<*>) {
-            val name = descriptor.getElementName(index)
-            val ordinal = value.ordinal
-            when (headers[index]) {
-                PGType.Int2 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toShort() }
-                PGType.Int4 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
-                PGType.Int8 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toLong() }
-                PGType.Numeric -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
-                PGType.Text -> nameToIndex.getValue(name).forEach { i -> target[i] = value.name }
-                else -> {
-                    throw IllegalArgumentException("Bad type: ${headers[index]}")
-                }
-            }
-        } else {
-            throw IllegalStateException("Unsupported type (idx = $index): $value")
-        }
+        encodeAnyElement(value, descriptor, index, serializer)
     }
 
     override fun <T> encodeSerializableElement(
@@ -250,24 +272,7 @@ internal class PostgresRowEncoder(
         serializer: SerializationStrategy<T>,
         value: T
     ) {
-        if (value == null) {
-            nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = null }
-        } else if (serializer.descriptor.kind == UnionKind.ENUM_KIND && value is Enum<*>) {
-            val name = descriptor.getElementName(index)
-            val ordinal = value.ordinal
-            when (headers[index]) {
-                PGType.Int2 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toShort() }
-                PGType.Int4 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
-                PGType.Int8 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toLong() }
-                PGType.Numeric -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
-                PGType.Text -> nameToIndex.getValue(name).forEach { i -> target[i] = value.name }
-                else -> {
-                    throw IllegalArgumentException("Bad type: ${headers[index]}")
-                }
-            }
-        } else {
-            throw IllegalStateException("Unsupported type (idx = $index): $value")
-        }
+        encodeAnyElement(value, descriptor, index, serializer)
     }
 
     override fun encodeShortElement(descriptor: SerialDescriptor, index: Int, value: Short) {

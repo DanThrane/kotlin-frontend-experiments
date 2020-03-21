@@ -1,10 +1,17 @@
+import org.jetbrains.kotlin.cli.jvm.main
+
 plugins {
     kotlin("multiplatform") version "1.3.70"
     kotlin("plugin.serialization") version "1.3.70"
+    application
 }
 
 group = "dk.thrane.playground"
 version = "0.1.0"
+
+application {
+    mainClassName = "dk.thrane.playground.MainKt"
+}
 
 repositories {
     jcenter()

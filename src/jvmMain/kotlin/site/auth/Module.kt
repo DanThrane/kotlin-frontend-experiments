@@ -8,6 +8,8 @@ import dk.thrane.playground.modules.Module
 import dk.thrane.playground.modules.ModuleContainer
 import dk.thrane.playground.modules.migrationHandler
 import dk.thrane.playground.modules.pgPool
+import dk.thrane.playground.site.api.PrincipalRole
+import kotlinx.coroutines.runBlocking
 
 class AuthenticationModule : Module {
     override val controllers: MutableList<Controller> = ArrayList()
@@ -16,13 +18,15 @@ class AuthenticationModule : Module {
         PrincipalTable.registerMigrations(container.migrationHandler)
         TokenTable.registerMigrations(container.migrationHandler)
 
+        val authenticationService = AuthenticationService(
+            container.pgPool,
+            JWT.default,
+            HS256WithKey("test")
+        )
+
         controllers.add(
             AuthenticationController(
-                AuthenticationService(
-                    container.pgPool,
-                    JWT.default,
-                    HS256WithKey("test")
-                )
+                authenticationService
             )
         )
     }
