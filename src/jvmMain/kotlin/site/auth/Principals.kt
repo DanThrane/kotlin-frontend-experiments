@@ -15,11 +15,6 @@ class PrincipalTable(
     override fun toString() = "PrincipalTable($username, $role)"
 
     companion object : SQLTable("principals") {
-        const val username = "username"
-        const val role = "role"
-        const val password = "password"
-        const val salt = "salt"
-
         override fun registerMigrations(handler: MigrationHandler) {
             handler.addScript("principals init") { conn ->
                 conn.sendCommand(

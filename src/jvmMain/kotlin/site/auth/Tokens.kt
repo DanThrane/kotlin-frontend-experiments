@@ -13,10 +13,6 @@ data class TokenTable(
     override fun toString() = "TokenTable($username, $expiry)"
 
     companion object : SQLTable("tokens") {
-        const val username = "username"
-        const val token = "token"
-        const val expiry = "expiry"
-
         override fun registerMigrations(handler: MigrationHandler) {
             handler.addScript("tokens init") { conn ->
                 conn.sendCommand(

@@ -58,13 +58,15 @@ object AuthenticationStore {
             refreshAccessToken()
             return getAccessTokenOrRefresh()
         }
-        val currentJwt =
-            runCatching { JWT.default.validate(currentAccessToken) }.getOrNull() ?: run {
+        val currentJwt = run {
+            try {
+                JWT.default.validate(currentAccessToken)
+            } catch (ex: Throwable) {
                 mutableRefreshToken.currentValue = null
                 mutablePrincipal.currentValue = null
                 throw RPCException(ResponseCode.INTERNAL_ERROR, "Bad tokens")
             }
-
+        }
         val claims = Json.plain.fromJson(JWTClaims.serializer(), currentJwt.body)
 
         if (claims.exp > Date().getTime().toLong()) {

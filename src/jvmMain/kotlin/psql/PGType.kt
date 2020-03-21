@@ -8,6 +8,7 @@ sealed class PGType<KtType>(val typeName: String) {
     object Int2 : PGType<Short>("int2")
     object Int4 : PGType<Int>("int4")
     object Int8 : PGType<Long>("int8")
+    object Varchar : PGType<String>("varchar")
     object Text : PGType<String>("text")
     object Json : PGType<String>("json")
     object Jsonb : PGType<String>("jsonb")

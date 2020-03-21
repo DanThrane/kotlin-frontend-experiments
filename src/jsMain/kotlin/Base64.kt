@@ -4,11 +4,11 @@ import org.khronos.webgl.Int8Array
 import org.khronos.webgl.Uint8Array
 import org.khronos.webgl.get
 import org.khronos.webgl.set
-import kotlin.math.ceil
+import kotlin.math.floor
 
 object JSBase64Encoder : Base64Encoder {
     override fun decode(message: String): ByteArray {
-        val output = Uint8Array(ceil((message.length * 6) / 8.0).toInt())
+        val output = Uint8Array(floor((message.length * 6) / 8.0).toInt())
         var outputPtr = 0
 
         var uint24 = 0

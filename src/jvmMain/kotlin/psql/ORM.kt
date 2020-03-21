@@ -32,8 +32,13 @@ internal class PostgresRootDecoder(override val context: SerialModule, private v
     override fun decodeUnit() = unexpected()
 }
 
-internal class PrimitiveDecoder(val value: Any?, override val context: SerialModule = EmptyModule) : Decoder {
+internal class PrimitiveDecoder(
+    private val row: DBRow,
+    private val index: Int,
+    override val context: SerialModule = EmptyModule
+) : Decoder {
     override val updateMode: UpdateMode = UpdateMode.BANNED
+    private val value: Any? get() = row.getUntyped(index)
 
     override fun beginStructure(descriptor: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder =
         throw IllegalStateException("Not supported")
@@ -42,7 +47,21 @@ internal class PrimitiveDecoder(val value: Any?, override val context: SerialMod
     override fun decodeByte(): Byte = value as Byte
     override fun decodeChar(): Char = value as Char
     override fun decodeDouble(): Double = value as Double
-    override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = value as Int
+    override fun decodeEnum(enumDescriptor: SerialDescriptor): Int {
+        when (row.columnDefinitions[index].type) {
+            PGType.Int2, PGType.Int4, PGType.Int8, PGType.Numeric -> {
+                return (value as Number).toInt()
+            }
+
+            PGType.Varchar, PGType.Text -> {
+                return enumDescriptor.getElementIndex((value as String))
+            }
+
+            else -> {
+                throw IllegalStateException("Cannot deserialize enum in $row (index = $index)")
+            }
+        }
+    }
     override fun decodeFloat(): Float = value as Float
     override fun decodeInt(): Int = value as Int
     override fun decodeLong(): Long = value as Long
@@ -104,9 +123,11 @@ internal class PostgresDecoder(private val row: DBRow, override val context: Ser
                 }
                 TODO()
             }
-            is PrimitiveKind -> {
-                return deserializer.deserialize(PrimitiveDecoder(row.getUntyped(index)))
+
+            is UnionKind.ENUM_KIND, is PrimitiveKind -> {
+                return deserializer.deserialize(PrimitiveDecoder(row, index))
             }
+
             else -> {
                 throw IllegalStateException(
                     "Cannot deserialize row (unsupported): " +

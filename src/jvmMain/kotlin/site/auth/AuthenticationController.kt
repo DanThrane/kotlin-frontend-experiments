@@ -1,10 +1,6 @@
 package dk.thrane.playground.site.auth
 
-import dk.thrane.playground.Controller
-import dk.thrane.playground.EmptyMessage
-import dk.thrane.playground.RPCException
-import dk.thrane.playground.ResponseCode
-import dk.thrane.playground.respond
+import dk.thrane.playground.*
 import dk.thrane.playground.site.api.Authentication
 import dk.thrane.playground.site.api.LoginResponse
 import dk.thrane.playground.site.api.Principal
@@ -30,8 +26,10 @@ class AuthenticationController(
 
         implement(Authentication.whoami) {
             val jwtToken = authorization ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Missing token")
+            log.info("Received this JWT: $jwtToken")
             val principal = authenticationService.validateJWT(jwtToken)
                 ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Not authenticated with service.")
+            log.info("It all checks out: ${principal}")
             Pair(ResponseCode.OK, Principal(principal.username, principal.role))
         }
 
@@ -39,5 +37,9 @@ class AuthenticationController(
             val refreshToken = request.token
             respond(RefreshResponse(authenticationService.refresh(refreshToken)))
         }
+    }
+
+    companion object {
+        private val log = Log("AuthenticationController")
     }
 }

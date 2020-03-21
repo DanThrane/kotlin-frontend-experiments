@@ -1,9 +1,6 @@
 package dk.thrane.playground.site.auth
 
-import dk.thrane.playground.JWT
-import dk.thrane.playground.JWTAlgorithmAndKey
-import dk.thrane.playground.RPCException
-import dk.thrane.playground.ResponseCode
+import dk.thrane.playground.*
 import dk.thrane.playground.psql.*
 import dk.thrane.playground.site.api.JWTClaims
 import dk.thrane.playground.site.api.Principal
@@ -35,14 +32,14 @@ class AuthenticationService(
 
     @Serializable private data class FindByUsername(val username: String)
     private val findPrincipalByUsername = PreparedStatement(
-        "select * from $PrincipalTable where ${PrincipalTable.username} = ?username",
+        "select * from $PrincipalTable where username = ?username",
         FindByUsername.serializer(),
         PrincipalTable.serializer()
     ).asQuery()
 
     @Serializable private data class DeleteByToken(val token: String)
     private val deleteByToken = PreparedStatement(
-        "delete from $TokenTable where ${TokenTable.token} = ?token",
+        "delete from $TokenTable where token = ?token",
         DeleteByToken.serializer(),
         EmptyTable.serializer()
     ).asCommand()
@@ -53,9 +50,9 @@ class AuthenticationService(
            select P.* 
            from $PrincipalTable P, $TokenTable T 
            where 
-               P.${PrincipalTable.username} = T.${TokenTable.username} and
-               ${TokenTable.token} = ?token and 
-               ${TokenTable.expiry} > ?now 
+               P.username = T.username and
+               token = ?token and 
+               expiry > ?now 
         """,
         FindPrincipalByToken.serializer(),
         PrincipalTable.serializer()
@@ -195,6 +192,7 @@ class AuthenticationService(
     private fun genSalt(): ByteArray = ByteArray(saltLength).also { secureRandom.nextBytes(it) }
 
     companion object {
+        private val log = Log("AuthenticationService")
         private val secureRandom = SecureRandom()
         private const val keyFactory = "PBKDF2WithHmacSHA512"
         private const val iterations = 10000

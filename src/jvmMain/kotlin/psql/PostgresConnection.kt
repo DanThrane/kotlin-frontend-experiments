@@ -113,7 +113,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                 val serialized = row.mapIndexed { colIdx, col ->
                     val textual: String? = when (statement.header[colIdx]) {
                         PGType.Int2, PGType.Int4, PGType.Int8 -> col?.toString()
-                        PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml -> col?.toString()
+                        PGType.Varchar, PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml -> col?.toString()
                         PGType.Bool -> (col as Boolean?)?.toString()
                         PGType.Float4, PGType.Float8, PGType.Numeric -> col?.toString()
                         PGType.Char -> col?.toString()
@@ -223,7 +223,7 @@ class PostgresConnection(connectionParameters: PostgresConnectionParameters) {
                                 )
                             }
 
-                            PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml, is PGType.Unknown -> {
+                            PGType.Varchar, PGType.Text, PGType.Json, PGType.Jsonb, PGType.Xml, is PGType.Unknown -> {
                                 Column(
                                     @Suppress("UNCHECKED_CAST")
                                     (ColumnDefinition(
