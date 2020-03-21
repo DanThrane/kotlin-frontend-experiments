@@ -1,8 +1,8 @@
 package dk.thrane.playground
 
-class ObjectPool<T> @PublishedApi internal constructor(
+class ObjectPool<T : Any> @PublishedApi internal constructor(
     private val itemGenerator: () -> T,
-    private val instances: Array<T>,
+    private val instances: Array<T?>,
     private val reset: (T) -> Unit,
     private val isValid: (T) -> Boolean
 ) {
@@ -21,16 +21,21 @@ class ObjectPool<T> @PublishedApi internal constructor(
             }
 
             instanceLocks[firstFree] = true
-            return Pair(instances[firstFree], firstFree)
+            val instance = instances[firstFree]
+            return if (instance != null && isValid(instance)) {
+                Pair(instance, firstFree)
+            } else {
+                val newInstance = itemGenerator()
+                instances[firstFree] = newInstance
+                Pair(newInstance, firstFree)
+            }
         }
     }
 
     fun returnInstance(idx: Int) {
         synchronized(lock) {
-            val instance = instances[idx]
-            if (!isValid(instance)) {
-                instances[idx] = itemGenerator()
-            } else {
+            val instance = instances[idx] ?: throw IllegalArgumentException("Returned instance is null")
+            if (isValid(instance)) {
                 reset(instance)
             }
 
@@ -40,7 +45,7 @@ class ObjectPool<T> @PublishedApi internal constructor(
     }
 }
 
-inline fun <T, R> ObjectPool<T>.useInstance(block: (T) -> R): R {
+inline fun <T : Any, R> ObjectPool<T>.useInstance(block: (T) -> R): R {
     val (instance, key) = borrowInstance()
     try {
         return block(instance)
@@ -49,13 +54,13 @@ inline fun <T, R> ObjectPool<T>.useInstance(block: (T) -> R): R {
     }
 }
 
-inline fun <reified T> ObjectPool(
+inline fun <reified T : Any> ObjectPool(
     size: Int,
     noinline itemGenerator: () -> T,
     noinline reset: (T) -> Unit,
     noinline isValid: (T) -> Boolean = { true }
 ): ObjectPool<T> {
-    return ObjectPool(itemGenerator, Array(size) { itemGenerator() }, reset, isValid)
+    return ObjectPool(itemGenerator, arrayOfNulls(size), reset, isValid)
 }
 
 val defaultBufferPool by lazy { ObjectPool(512, { ByteArray(1024 * 128) }, {}) }

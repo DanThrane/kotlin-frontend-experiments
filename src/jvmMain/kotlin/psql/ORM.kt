@@ -3,20 +3,24 @@ package dk.thrane.playground.psql
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.*
-import kotlinx.serialization.internal.ByteDescriptor
-import kotlinx.serialization.internal.PrimitiveArrayDescriptor
+import kotlinx.serialization.internal.TaggedDecoder
+import kotlinx.serialization.internal.TaggedEncoder
 
 // TODO This is by no means done but it does show that it is possible
+@OptIn(InternalSerializationApi::class)
 internal class PostgresDecoder(private val row: DBRow) : TaggedDecoder<Pair<Int, String>>() {
     override fun SerialDescriptor.getTag(index: Int): Pair<Int, String> = index to getElementName(index)
 
-    override fun beginStructure(desc: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder {
+    override fun beginStructure(descriptor: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder {
         val tag = currentTagOrNull ?: return this
-        if (desc.kind == StructureKind.LIST) {
+        if (descriptor.kind == StructureKind.LIST) {
             return PostgresListDecoder(row, tag)
         }
         return this
     }
+
+    override fun decodeSequentially(): Boolean = true
+    override fun decodeElementIndex(descriptor: SerialDescriptor): Int = throw NotImplementedError()
 
     override fun decodeTaggedNotNullMark(tag: Pair<Int, String>): Boolean =
         row.getUntypedByName(tag.second, tag.first) != null
@@ -73,11 +77,13 @@ internal class PostgresDecoder(private val row: DBRow) : TaggedDecoder<Pair<Int,
     }
 }
 
+@OptIn(InternalSerializationApi::class)
 internal class PostgresListDecoder(private val row: DBRow, private val listTag: Pair<Int, String>) : TaggedDecoder<Int>() {
     private val bytea = row[listTag.first, PGType.Bytea]!!
     override fun SerialDescriptor.getTag(index: Int): Int = index
     override fun decodeTaggedByte(tag: Int): Byte = bytea[tag]
-    override fun decodeCollectionSize(desc: SerialDescriptor): Int = bytea.size
+    override fun decodeCollectionSize(descriptor: SerialDescriptor): Int = bytea.size
+    override fun decodeElementIndex(descriptor: SerialDescriptor): Int = currentTag
 }
 
 internal fun <T> Flow<DBRow>.mapRows(serializer: KSerializer<T>): Flow<T> {
@@ -86,6 +92,7 @@ internal fun <T> Flow<DBRow>.mapRows(serializer: KSerializer<T>): Flow<T> {
     }
 }
 
+@OptIn(InternalSerializationApi::class)
 internal class PostgresByteaEncoder(private val target: ByteArray) : TaggedEncoder<Int>() {
     override fun SerialDescriptor.getTag(index: Int): Int = index
 
@@ -94,6 +101,7 @@ internal class PostgresByteaEncoder(private val target: ByteArray) : TaggedEncod
     }
 }
 
+@OptIn(InternalSerializationApi::class)
 internal class PostgresRowEncoder(
     private val target: Array<Any?>,
     private val headers: List<PGType<*>>,
@@ -106,26 +114,36 @@ internal class PostgresRowEncoder(
     override fun SerialDescriptor.getTag(index: Int): Pair<Int, String> = index to getElementName(index)
 
     override fun beginCollection(
-        desc: SerialDescriptor,
+        descriptor: SerialDescriptor,
         collectionSize: Int,
         vararg typeParams: KSerializer<*>
     ): CompositeEncoder {
         val tag = currentTagOrNull ?: return this
-        if (desc is PrimitiveArrayDescriptor && desc.elementDesc == ByteDescriptor) {
-            val expectedType = headers[tag.first]
-            if (expectedType != PGType.Bytea) {
-                throw IllegalStateException("Expected $tag to have type bytea but was $expectedType")
-            }
-
-            val value = ByteArray(collectionSize)
-            nameToIndex.getValue(tag.second).forEach { i -> target[i] = value}
-            return PostgresByteaEncoder(value)
+        val expectedType = headers[tag.first]
+        if (expectedType == PGType.Bytea) {
+            TODO("Handle bytea")
         }
+            /*
+            if (descriptor is PrimitiveArrayDescriptor && descriptor.elementDesc == PrimitiveDescriptor(
+                    "yourSerializerUniqueName",
+                    PrimitiveKind.BYTE
+                )
+            ) {
+                val expectedType = headers[tag.first]
+                if (expectedType != PGType.Bytea) {
+                    throw IllegalStateException("Expected $tag to have type bytea but was $expectedType")
+                }
 
-        return super.beginCollection(desc, collectionSize, *typeParams)
+                val value = ByteArray(collectionSize)
+                nameToIndex.getValue(tag.second).forEach { i -> target[i] = value}
+                return PostgresByteaEncoder(value)
+            }
+             */
+
+        return super.beginCollection(descriptor, collectionSize, *typeParams)
     }
 
-    override fun beginStructure(desc: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeEncoder {
+    override fun beginStructure(descriptor: SerialDescriptor, vararg typeSerializers: KSerializer<*>): CompositeEncoder {
         val tag = currentTagOrNull ?: return this
 
         TODO()

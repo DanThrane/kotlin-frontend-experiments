@@ -1,10 +1,7 @@
 package dk.thrane.playground.psql
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.*
-import kotlinx.serialization.internal.ByteDescriptor
-import kotlinx.serialization.internal.PrimitiveArrayDescriptor
 import java.util.*
 import kotlin.collections.HashMap
 
@@ -29,7 +26,6 @@ class PreparedStatement<Input, Output>(
             .mapIndexed { index, elem ->
                 inSerializer.descriptor.getElementName(index) to when (elem.kind) {
                     PrimitiveKind.INT -> PGType.Int4
-                    PrimitiveKind.UNIT -> PGType.Void
                     PrimitiveKind.BOOLEAN -> PGType.Bool
                     PrimitiveKind.BYTE -> TODO()
                     PrimitiveKind.SHORT -> PGType.Int2
@@ -40,17 +36,15 @@ class PreparedStatement<Input, Output>(
                     PrimitiveKind.STRING -> PGType.Text
                     StructureKind.CLASS -> TODO()
                     StructureKind.LIST -> {
-                        if (elem is PrimitiveArrayDescriptor && elem.elementDesc == ByteDescriptor) {
-                            PGType.Bytea
-                        } else {
-                            TODO()
-                        }
+                        TODO("Handle bytea")
                     }
                     StructureKind.MAP -> TODO()
-                    UnionKind.OBJECT -> TODO()
+                    StructureKind.OBJECT -> TODO()
                     UnionKind.ENUM_KIND -> PGType.Text
                     PolymorphicKind.SEALED -> TODO()
                     PolymorphicKind.OPEN -> TODO()
+                    UnionKind.CONTEXTUAL -> TODO()
+                    else -> throw IllegalStateException("Unhandled type: ${elem.kind}")
                 }
             }
             .toMap()

@@ -6,19 +6,20 @@ import dk.thrane.playground.startServer
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class ModuleContainer(val cliArgs: List<String>) : BaseServer() {
     private val plugins = AttributeStore()
     val attributes = AttributeStore()
     internal val modules = ArrayList<Module>()
-    private val onStartScripts = ArrayList<() -> Unit>()
+    private val onStartScripts = ArrayList<suspend () -> Unit>()
 
-    fun addOnStartScript(script: () -> Unit) {
+    fun addOnStartScript(script: suspend () -> Unit) {
         onStartScripts.add(script)
     }
 
     fun <Plugin : ContainerPlugin> install(pluginFactory: ContainerPluginFactory<Plugin>) {
-        log.info("Installing plugin: ${pluginFactory.javaClass.simpleName}")
+        log.info("Installing plugin: ${pluginFactory.key.name}")
         val plugin = pluginFactory.createPlugin(this)
         plugins[pluginFactory.key] = plugin
     }
@@ -72,7 +73,9 @@ class ModuleContainer(val cliArgs: List<String>) : BaseServer() {
             module.controllers.forEach { addController(it) }
         }
 
-        onStartScripts.forEach { it() }
+        runBlocking {
+            onStartScripts.forEach { it() }
+        }
 
         return GlobalScope.launch {
             startServer(httpRequestHandler = this@ModuleContainer, webSocketRequestHandler = this@ModuleContainer)

@@ -2,7 +2,7 @@ package serialization
 
 import dk.thrane.playground.serialization.MessageFormat
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.internal.nullable
+import kotlinx.serialization.builtins.nullable
 import kotlin.test.*
 
 @Serializable

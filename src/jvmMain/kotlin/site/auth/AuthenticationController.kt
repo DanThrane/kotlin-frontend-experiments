@@ -1,4 +1,4 @@
-package dk.thrane.playground.site
+package dk.thrane.playground.site.auth
 
 import dk.thrane.playground.Controller
 import dk.thrane.playground.EmptyMessage
@@ -9,7 +9,6 @@ import dk.thrane.playground.site.api.Authentication
 import dk.thrane.playground.site.api.LoginResponse
 import dk.thrane.playground.site.api.Principal
 import dk.thrane.playground.site.api.RefreshResponse
-import dk.thrane.playground.site.service.AuthenticationService
 
 class AuthenticationController(
     private val authenticationService: AuthenticationService

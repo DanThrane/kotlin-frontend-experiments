@@ -5,6 +5,12 @@ import dk.thrane.playground.MigrationHandler
 class MigrationPlugin(private val container: ModuleContainer) : ContainerPlugin {
     init {
         container.migrationHandler = MigrationHandler(container.pgPool)
+
+        if (container.cliArgs.contains("--migrate")) {
+            container.addOnStartScript {
+                container.migrationHandler.runMigrations()
+            }
+        }
     }
 
     companion object : ContainerPluginFactory<MigrationPlugin> {

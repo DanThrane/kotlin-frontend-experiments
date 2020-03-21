@@ -50,8 +50,7 @@ abstract class WSConnection : Connection {
         header: RequestHeader,
         request: Request
     ): Response {
-        val requestId = retrieveRequestId()
-
+        val requestId = header.requestId
         var handler: (suspend (header: ResponseHeader, RPCResult<Response>) -> Unit)? = null
         addSubscription(requestId, rpc) { responseHeader, result ->
             rpcClientLog.debug("Waiting for handler")
@@ -117,7 +116,7 @@ interface Connection {
 
 typealias Authenticator = suspend (connection: Connection) -> ConnectionWithAuthorization
 
-suspend inline fun <Req, Res> RPC<Req, Res>.call(
+suspend fun <Req, Res> RPC<Req, Res>.call(
     connection: Connection,
     authenticator: Authenticator,
     message: Req

@@ -9,7 +9,7 @@ import dk.thrane.playground.serialization.InputBuffer
 import dk.thrane.playground.serialization.readFully
 import dk.thrane.playground.serialization.readInt
 import dk.thrane.playground.serialization.readShort
-import kotlinx.io.IOException
+import java.io.IOException
 
 internal sealed class BackendMessage(val type: Byte) {
     sealed class Authentication(val subType: Int) : BackendMessage(Type) {

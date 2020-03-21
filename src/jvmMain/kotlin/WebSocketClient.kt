@@ -1,13 +1,11 @@
 package dk.thrane.playground
 
 import dk.thrane.playground.io.*
-import dk.thrane.playground.site.api.Authentication
-import dk.thrane.playground.site.api.LoginRequest
 import kotlinx.coroutines.*
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.io.IOException
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.StandardSocketOptions
 import java.nio.ByteBuffer

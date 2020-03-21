@@ -158,6 +158,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
         } catch (ex: RPCException) {
             ex.printStackTrace()
             didHandleMessage = true
+            log.info("Responding because of error. The request header we got: ${requestHeader}")
             sendMessage(
                 ResponseHeader(
                     requestHeader.requestId,

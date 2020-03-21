@@ -10,24 +10,24 @@ class MessageFormat(
     private val maxMessageSize: Int = 1024 * 64,
     override val context: SerialModule = EmptyModule
 ) : BinaryFormat {
-    override fun <T> dump(serializer: SerializationStrategy<T>, obj: T): ByteArray {
+    override fun <T> dump(serializer: SerializationStrategy<T>, value: T): ByteArray {
         val out = OutputBuffer(ByteArray(maxMessageSize))
 
         val writer = internalDump(serializer.descriptor)
-        serializer.serialize(writer, obj)
+        serializer.serialize(writer, value)
 
         val field = ObjectField(writer.fieldBuilder)
         field.serialize(out)
         return out.array.sliceArray(0 until out.ptr)
     }
 
-    private fun internalDump(desc: SerialDescriptor): Writer {
+    private fun internalDump(desc: SerialDescriptor): RootEncoder {
         when (desc.kind) {
-            StructureKind.CLASS, UnionKind.OBJECT, is PolymorphicKind -> {
+            StructureKind.CLASS, StructureKind.OBJECT, is PolymorphicKind -> {
                 val elementCount = desc.elementsCount
 
                 if (elementCount == 0) {
-                    return Writer(SparseFieldArray(0, allowResize = false))
+                    return RootEncoder(SparseFieldArray(0, allowResize = false))
                 }
 
                 // First we figure out how many fields this object will contain:
@@ -35,17 +35,16 @@ class MessageFormat(
                 var maxId = -1
 
                 for (i in 0 until elementCount) {
-                    val serialId = desc.getElementAnnotations(i).find { it is SerialId } as? SerialId
-                    ids[i] = serialId?.id ?: i
+                    ids[i] = i
                     maxId = max(ids[i], maxId)
                 }
 
                 require(maxId >= 0)
                 log.debug("new writer has ${maxId + 1} fields")
-                return Writer(SparseFieldArray(maxId + 1, allowResize = false))
+                return RootEncoder(SparseFieldArray(maxId + 1, allowResize = false))
             }
 
-            StructureKind.LIST -> return Writer(SparseFieldArray(32, allowResize = true))
+            StructureKind.LIST -> return RootEncoder(SparseFieldArray(32, allowResize = true))
 
             else -> throw NotImplementedError("Unsupported kind: ${desc.kind}")
         }
@@ -53,124 +52,215 @@ class MessageFormat(
 
     override fun <T> load(deserializer: DeserializationStrategy<T>, bytes: ByteArray): T {
         val objectField = Field.deserialize(InputBuffer(bytes)) as? ObjectField ?: throw BadMessageException()
-        return Reader(objectField).decode(deserializer)
+        return RootDecoder(objectField).decode(deserializer)
     }
 
-    private inner class Writer(val fieldBuilder: SparseFieldArray) : TaggedEncoder<Int>() {
+    private inner class RootEncoder(val fieldBuilder: SparseFieldArray) : Encoder {
+        override val context = this@MessageFormat.context
+
+        override fun beginStructure(
+            descriptor: SerialDescriptor,
+            vararg typeSerializers: KSerializer<*>
+        ): CompositeEncoder {
+            return ObjectEncoder(fieldBuilder)
+        }
+
+        private fun unexpectedUsage(): Nothing =
+            throw IllegalStateException("All serialized objects must be wrapped in an object")
+
+        override fun encodeBoolean(value: Boolean) = unexpectedUsage()
+        override fun encodeByte(value: Byte) = unexpectedUsage()
+        override fun encodeChar(value: Char) = unexpectedUsage()
+        override fun encodeDouble(value: Double) = unexpectedUsage()
+        override fun encodeEnum(enumDescriptor: SerialDescriptor, index: Int) = unexpectedUsage()
+        override fun encodeFloat(value: Float) = unexpectedUsage()
+        override fun encodeInt(value: Int) = unexpectedUsage()
+        override fun encodeLong(value: Long) = unexpectedUsage()
+        override fun encodeNull() {
+
+        }
+        override fun encodeShort(value: Short) = unexpectedUsage()
+        override fun encodeString(value: String) = unexpectedUsage()
+        override fun encodeUnit() = unexpectedUsage()
+    }
+
+    private inner class ObjectEncoder(val fieldBuilder: SparseFieldArray) : CompositeEncoder {
         override val context: SerialModule
             get() = this@MessageFormat.context
 
-        override fun SerialDescriptor.getTag(index: Int): Int {
-            return (getElementAnnotations(index).find { it is SerialId } as? SerialId)?.id ?: index
+        override fun encodeBooleanElement(descriptor: SerialDescriptor, index: Int, value: Boolean) {
+            fieldBuilder[index] = BooleanField(value)
         }
 
-        override fun beginStructure(desc: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeEncoder {
-            log.debug("beginStructure($desc, $currentTagOrNull)")
-            val tag = currentTagOrNull ?: return this
-            val writer = internalDump(desc)
-            fieldBuilder[tag] = ObjectField(writer.fieldBuilder)
-            return writer
+        override fun encodeByteElement(descriptor: SerialDescriptor, index: Int, value: Byte) {
+            fieldBuilder[index] = BinaryField(byteArrayOf(value))
         }
 
-        override fun encodeTaggedBoolean(tag: Int, value: Boolean) {
-            fieldBuilder[tag] = BooleanField(value)
+        override fun encodeCharElement(descriptor: SerialDescriptor, index: Int, value: Char) {
+            fieldBuilder[index] = BinaryField("$value".encodeToByteArray())
         }
 
-        override fun encodeTaggedByte(tag: Int, value: Byte) {
-            fieldBuilder[tag] = ByteField(value)
+        override fun encodeDoubleElement(descriptor: SerialDescriptor, index: Int, value: Double) {
+            fieldBuilder[index] = DoubleField(value)
         }
 
-        override fun encodeTaggedChar(tag: Int, value: Char) {
-            fieldBuilder[tag] = BinaryField("$value".encodeToByteArray())
+        override fun encodeFloatElement(descriptor: SerialDescriptor, index: Int, value: Float) {
+            fieldBuilder[index] = DoubleField(value.toDouble())
         }
 
-        override fun encodeTaggedDouble(tag: Int, value: Double) {
-            fieldBuilder[tag] = DoubleField(value)
+        override fun encodeIntElement(descriptor: SerialDescriptor, index: Int, value: Int) {
+            fieldBuilder[index] = IntField(value)
         }
 
-        override fun encodeTaggedEnum(tag: Int, enumDescription: SerialDescriptor, ordinal: Int) {
-            fieldBuilder[tag] = IntField(ordinal)
+        override fun encodeLongElement(descriptor: SerialDescriptor, index: Int, value: Long) {
+            fieldBuilder[index] = LongField(value)
         }
 
-        override fun encodeTaggedFloat(tag: Int, value: Float) {
-            fieldBuilder[tag] = DoubleField(value.toDouble())
+        override fun <T : Any> encodeNullableSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            serializer: SerializationStrategy<T>,
+            value: T?
+        ) {
+            if (value == null) {
+                fieldBuilder[index] = NullField
+            } else {
+                val writer = internalDump(serializer.descriptor)
+                serializer.serialize(writer, value)
+                fieldBuilder[index] = ObjectField(writer.fieldBuilder)
+            }
         }
 
-        override fun encodeTaggedInt(tag: Int, value: Int) {
-            fieldBuilder[tag] = IntField(value)
+        override fun <T> encodeSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            serializer: SerializationStrategy<T>,
+            value: T
+        ) {
+            if (value == null) {
+                fieldBuilder[index] = NullField
+            } else {
+                val writer = internalDump(serializer.descriptor)
+                serializer.serialize(writer, value)
+                fieldBuilder[index] = ObjectField(writer.fieldBuilder)
+            }
         }
 
-        override fun encodeTaggedLong(tag: Int, value: Long) {
-            fieldBuilder[tag] = LongField(value)
+        override fun encodeShortElement(descriptor: SerialDescriptor, index: Int, value: Short) {
+            fieldBuilder[index] = IntField(value.toInt())
         }
 
-        override fun encodeTaggedNotNullMark(tag: Int) {
-            // Do nothing
+        override fun encodeStringElement(descriptor: SerialDescriptor, index: Int, value: String) {
+            fieldBuilder[index] = BinaryField(value.encodeToByteArray())
         }
 
-        override fun encodeTaggedNull(tag: Int) {
-            fieldBuilder[tag] = NullField
+        override fun encodeUnitElement(descriptor: SerialDescriptor, index: Int) {
+            fieldBuilder[index] = ObjectField(emptyList())
         }
 
-        override fun encodeTaggedShort(tag: Int, value: Short) {
-            fieldBuilder[tag] = IntField(value.toInt())
-        }
-
-        override fun encodeTaggedString(tag: Int, value: String) {
-            fieldBuilder[tag] = BinaryField(value.encodeToByteArray())
-        }
-
-        override fun encodeTaggedUnit(tag: Int) {
-            fieldBuilder[tag] = ObjectField(emptyList())
+        override fun endStructure(descriptor: SerialDescriptor) {
         }
     }
 
-    private inner class Reader(private val field: ObjectField) : TaggedDecoder<Int>() {
+    private inner class RootDecoder(private val field: Field) : Decoder {
         override val context: SerialModule
             get() = this@MessageFormat.context
+        override val updateMode: UpdateMode = UpdateMode.BANNED
 
-        override fun SerialDescriptor.getTag(index: Int): Int {
-            return (getElementAnnotations(index).find { it is SerialId } as? SerialId)?.id ?: index
+        override fun beginStructure(descriptor: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder {
+            return ObjectReader(field as? ObjectField ?: throw IllegalStateException("Expected an object"))
         }
 
-        override fun beginStructure(desc: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder {
-            val tag = currentTagOrNull ?: return this
-            return Reader(field.getObject(tag))
+        override fun decodeNotNullMark(): Boolean {
+            return field.type != FieldType.NULL
         }
 
-        override fun decodeCollectionSize(desc: SerialDescriptor): Int = field.fields.size
+        private fun unexpectedUsage(): Nothing = throw IllegalStateException("Did not expect to be called")
 
-        override fun decodeTaggedBoolean(tag: Int): Boolean = field.getBoolean(tag)
+        override fun decodeBoolean(): Boolean = unexpectedUsage()
+        override fun decodeByte(): Byte = unexpectedUsage()
+        override fun decodeChar(): Char = unexpectedUsage()
+        override fun decodeDouble(): Double = unexpectedUsage()
+        override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = unexpectedUsage()
+        override fun decodeFloat(): Float = unexpectedUsage()
+        override fun decodeInt(): Int = unexpectedUsage()
+        override fun decodeLong(): Long = unexpectedUsage()
+        override fun decodeNull(): Nothing? = unexpectedUsage()
+        override fun decodeShort(): Short = unexpectedUsage()
+        override fun decodeString(): String = unexpectedUsage()
+        override fun decodeUnit() = unexpectedUsage()
+    }
 
-        override fun decodeTaggedByte(tag: Int): Byte = field.getByte(tag)
+    private inner class ObjectReader(private val field: ObjectField) : CompositeDecoder {
+        override val updateMode: UpdateMode = UpdateMode.BANNED
+        override val context: SerialModule
+            get() = this@MessageFormat.context
+        private var idx = 0
 
-        override fun decodeTaggedChar(tag: Int): Char = field.getBinary(tag).decodeToString().single()
+        override fun decodeCollectionSize(descriptor: SerialDescriptor): Int = field.fields.size
 
-        override fun decodeTaggedDouble(tag: Int): Double = field.getDouble(tag)
+        override fun decodeSequentially(): Boolean = true
 
-        override fun decodeTaggedEnum(tag: Int, enumDescription: SerialDescriptor): Int = field.getInt(tag)
-
-        override fun decodeTaggedFloat(tag: Int): Float = field.getDouble(tag).toFloat()
-
-        override fun decodeTaggedInt(tag: Int): Int = field.getInt(tag)
-
-        override fun decodeTaggedLong(tag: Int): Long = field.getLong(tag)
-
-        override fun decodeTaggedNotNullMark(tag: Int): Boolean = field.fields[tag] != NullField
-
-        override fun decodeTaggedNull(tag: Int): Nothing? {
-            require(field.fields[tag] == NullField)
-            return null
+        override fun decodeElementIndex(descriptor: SerialDescriptor): Int {
+            log.warn("Why am I being called?")
+            if (idx < descriptor.elementsCount) {
+                return idx++
+            } else {
+                return CompositeDecoder.READ_DONE
+            }
         }
 
-        override fun decodeTaggedShort(tag: Int): Short = field.getInt(tag).toShort()
-
-        override fun decodeTaggedString(tag: Int): String = field.getBinary(tag).decodeToString()
-
-        override fun decodeTaggedUnit(tag: Int) {
-            val emptyObject = field.getObject(tag)
-            require(emptyObject.fields.isEmpty())
+        override fun decodeBooleanElement(descriptor: SerialDescriptor, index: Int): Boolean = field.getBoolean(index)
+        override fun decodeByteElement(descriptor: SerialDescriptor, index: Int): Byte = field.getByte(index)
+        override fun decodeCharElement(descriptor: SerialDescriptor, index: Int): Char =
+            field.getBinary(index).decodeToString().single()
+        override fun decodeDoubleElement(descriptor: SerialDescriptor, index: Int): Double = field.getDouble(index)
+        override fun decodeFloatElement(descriptor: SerialDescriptor, index: Int): Float =
+            field.getDouble(index).toFloat()
+        override fun decodeIntElement(descriptor: SerialDescriptor, index: Int): Int = field.getInt(index)
+        override fun decodeLongElement(descriptor: SerialDescriptor, index: Int): Long = field.getLong(index)
+        override fun decodeShortElement(descriptor: SerialDescriptor, index: Int): Short = field.getInt(index).toShort()
+        override fun decodeStringElement(descriptor: SerialDescriptor, index: Int): String =
+            field.getBinary(index).decodeToString()
+        override fun decodeUnitElement(descriptor: SerialDescriptor, index: Int) {
+            require(field.fields[index].type == FieldType.OBJ_START)
         }
+
+        override fun <T : Any> decodeNullableSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            deserializer: DeserializationStrategy<T?>
+        ): T? {
+            if (field.fields[index].type == FieldType.NULL) return null
+            return deserializer.deserialize(RootDecoder(field.getObject(index)))
+        }
+
+        override fun <T> decodeSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            deserializer: DeserializationStrategy<T>
+        ): T {
+            // This doesn't seem correct. For some reason it works.
+            if (field.fields[index].type == FieldType.NULL) return null as T
+            return deserializer.deserialize(RootDecoder(field.getObject(index)))
+        }
+
+        override fun endStructure(descriptor: SerialDescriptor) {
+        }
+
+        override fun <T : Any> updateNullableSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            deserializer: DeserializationStrategy<T?>,
+            old: T?
+        ): T? = throw IllegalStateException("Not supported")
+
+        override fun <T> updateSerializableElement(
+            descriptor: SerialDescriptor,
+            index: Int,
+            deserializer: DeserializationStrategy<T>,
+            old: T
+        ): T = throw IllegalStateException("Not supported")
     }
 
     companion object : BinaryFormat {
@@ -178,7 +268,9 @@ class MessageFormat(
         public val default = MessageFormat()
 
         override val context: SerialModule get() = default.context
-        override fun <T> dump(serializer: SerializationStrategy<T>, obj: T): ByteArray = default.dump(serializer, obj)
+        override fun <T> dump(serializer: SerializationStrategy<T>, value: T): ByteArray =
+            default.dump(serializer, value)
+
         override fun <T> load(deserializer: DeserializationStrategy<T>, bytes: ByteArray): T =
             default.load(deserializer, bytes)
 

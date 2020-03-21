@@ -1,4 +1,4 @@
-package dk.thrane.playground.site.service
+package dk.thrane.playground.site.auth
 
 import dk.thrane.playground.MigrationHandler
 import dk.thrane.playground.psql.SQLTable

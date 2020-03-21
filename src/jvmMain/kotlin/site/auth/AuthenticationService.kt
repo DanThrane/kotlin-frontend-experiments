@@ -1,4 +1,4 @@
-package dk.thrane.playground.site.service
+package dk.thrane.playground.site.auth
 
 import dk.thrane.playground.JWT
 import dk.thrane.playground.JWTAlgorithmAndKey
@@ -68,13 +68,22 @@ class AuthenticationService(
     ) {
         val hashedPassword = hashPassword(password.toCharArray())
         db.useTransaction { conn ->
-            insertPrincipal(conn, PrincipalTable(username, role, hashedPassword.password, hashedPassword.salt))
+            insertPrincipal(conn,
+                PrincipalTable(
+                    username,
+                    role,
+                    hashedPassword.password,
+                    hashedPassword.salt
+                )
+            )
         }
     }
 
     suspend fun login(username: String, password: String): LoginResponse? {
         db.useTransaction { conn ->
-            val principal = findPrincipalByUsername(conn, FindByUsername(username)).singleOrNull() ?: run {
+            val principal = findPrincipalByUsername(conn,
+                FindByUsername(username)
+            ).singleOrNull() ?: run {
                 // Always run password hashing.
                 // This avoid leaking information about the user's existence through timing attacks.
                 hashPassword(password.toCharArray())
@@ -85,15 +94,26 @@ class AuthenticationService(
                 return null
             }
 
-            val token = TokenTable(username, createLoginToken(), System.currentTimeMillis() + tokenExpiryTime)
+            val token = TokenTable(
+                username,
+                createLoginToken(),
+                System.currentTimeMillis() + tokenExpiryTime
+            )
             insertToken(conn, token)
-            return LoginResponse(Principal(principal.username, principal.role), token.token)
+            return LoginResponse(
+                Principal(
+                    principal.username,
+                    principal.role
+                ), token.token
+            )
         }
     }
 
     suspend fun logout(token: String) {
         db.useTransaction { conn ->
-            deleteByToken(conn, DeleteByToken(token))
+            deleteByToken(conn,
+                DeleteByToken(token)
+            )
         }
     }
 
@@ -128,7 +148,10 @@ class AuthenticationService(
         db.useTransaction { conn ->
             val principal = findPrincipalByToken(
                 conn,
-                FindPrincipalByToken(token, System.currentTimeMillis())
+                FindPrincipalByToken(
+                    token,
+                    System.currentTimeMillis()
+                )
             ).singleOrNull() ?: return null
 
             val mappedPrincipal = Principal(principal.username, principal.role)
@@ -139,7 +162,10 @@ class AuthenticationService(
 
     private fun cacheToken(token: String, mappedPrincipal: Principal) {
         synchronized(tokenCache) {
-            tokenCache[token] = CachedToken(System.currentTimeMillis() + cacheExpiryTime, mappedPrincipal)
+            tokenCache[token] = CachedToken(
+                System.currentTimeMillis() + cacheExpiryTime,
+                mappedPrincipal
+            )
         }
     }
 

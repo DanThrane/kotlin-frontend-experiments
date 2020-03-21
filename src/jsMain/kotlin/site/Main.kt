@@ -7,10 +7,7 @@ import dk.thrane.playground.Log
 import dk.thrane.playground.backgroundColor
 import dk.thrane.playground.byTag
 import dk.thrane.playground.color
-import dk.thrane.playground.components.FontAwesome
-import dk.thrane.playground.components.reset
-import dk.thrane.playground.components.router
-import dk.thrane.playground.components.toasts
+import dk.thrane.playground.components.*
 import dk.thrane.playground.css
 import dk.thrane.playground.display
 import dk.thrane.playground.div
@@ -72,7 +69,7 @@ fun main() {
                 route = { },
 
                 children = {
-                    text("Root")
+                    push("/login")
                 }
             )
 
@@ -85,7 +82,6 @@ fun main() {
                 route = { +"overview" },
                 children = {
                     header()
-                    overviewPage()
                 }
             )
         }

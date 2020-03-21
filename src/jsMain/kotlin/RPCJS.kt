@@ -73,6 +73,8 @@ class JSWSConnection internal constructor(
                     }
                 } else {
                     log.debug("Couldn't find handler for response!")
+                    log.debug(subscriptions.toString())
+                    console.log(currentResponseHeader)
                 }
 
                 currentResponseHeader = null
@@ -96,6 +98,8 @@ class JSWSConnection internal constructor(
     override fun isOpen(): Boolean = socket.readyState == WebSocket.OPEN
 
     override suspend fun sendFrames(frames: List<ByteArray>) {
+        if (!isOpen()) awaitOpen()
+
         frames.forEach { buffer ->
             socket.send(buffer.unsafeCast<Int8Array>())
         }
