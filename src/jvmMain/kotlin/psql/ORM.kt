@@ -3,92 +3,108 @@ package dk.thrane.playground.psql
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.*
-import kotlinx.serialization.internal.TaggedDecoder
 import kotlinx.serialization.internal.TaggedEncoder
+import kotlinx.serialization.modules.EmptyModule
+import kotlinx.serialization.modules.SerialModule
 
 // TODO This is by no means done but it does show that it is possible
-@OptIn(InternalSerializationApi::class)
-internal class PostgresDecoder(private val row: DBRow) : TaggedDecoder<Pair<Int, String>>() {
-    override fun SerialDescriptor.getTag(index: Int): Pair<Int, String> = index to getElementName(index)
+internal class PostgresRootDecoder(override val context: SerialModule, private val row: DBRow) : Decoder {
+    override val updateMode = UpdateMode.BANNED
 
     override fun beginStructure(descriptor: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder {
-        val tag = currentTagOrNull ?: return this
-        if (descriptor.kind == StructureKind.LIST) {
-            return PostgresListDecoder(row, tag)
-        }
-        return this
+        return PostgresDecoder(row, context)
     }
+
+    override fun decodeNotNullMark(): Boolean = true
+    private fun unexpected(): Nothing = throw IllegalStateException("Did not expect to be called")
+
+    override fun decodeBoolean(): Boolean = unexpected()
+    override fun decodeByte(): Byte = unexpected()
+    override fun decodeChar(): Char = unexpected()
+    override fun decodeDouble(): Double = unexpected()
+    override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = unexpected()
+    override fun decodeFloat(): Float = unexpected()
+    override fun decodeInt(): Int = unexpected()
+    override fun decodeLong(): Long = unexpected()
+    override fun decodeNull(): Nothing? = unexpected()
+    override fun decodeShort(): Short = unexpected()
+    override fun decodeString(): String = unexpected()
+    override fun decodeUnit() = unexpected()
+}
+
+internal class PostgresDecoder(private val row: DBRow, override val context: SerialModule) : CompositeDecoder {
+    override val updateMode: UpdateMode = UpdateMode.BANNED
 
     override fun decodeSequentially(): Boolean = true
     override fun decodeElementIndex(descriptor: SerialDescriptor): Int = throw NotImplementedError()
 
-    override fun decodeTaggedNotNullMark(tag: Pair<Int, String>): Boolean =
-        row.getUntypedByName(tag.second, tag.first) != null
+    override fun decodeBooleanElement(descriptor: SerialDescriptor, index: Int): Boolean =
+        row.getUntyped(index) as Boolean
 
-    override fun decodeTaggedBoolean(tag: Pair<Int, String>): Boolean {
-        return row.getUntypedByName(tag.second, tag.first) as Boolean
+    override fun decodeByteElement(descriptor: SerialDescriptor, index: Int): Byte = row.getUntyped(index) as Byte
+    override fun decodeCharElement(descriptor: SerialDescriptor, index: Int): Char = row.getUntyped(index) as Char
+    override fun decodeDoubleElement(descriptor: SerialDescriptor, index: Int): Double = row.getUntyped(index) as Double
+    override fun decodeFloatElement(descriptor: SerialDescriptor, index: Int): Float = row.getUntyped(index) as Float
+    override fun decodeIntElement(descriptor: SerialDescriptor, index: Int): Int = row.getUntyped(index) as Int
+    override fun decodeLongElement(descriptor: SerialDescriptor, index: Int): Long = row.getUntyped(index) as Long
+    override fun decodeShortElement(descriptor: SerialDescriptor, index: Int): Short = row.getUntyped(index) as Short
+    override fun decodeStringElement(descriptor: SerialDescriptor, index: Int): String = row.getUntyped(index) as String
+
+    override fun decodeUnitElement(descriptor: SerialDescriptor, index: Int) {
+        // Empty
     }
 
-    override fun decodeTaggedByte(tag: Pair<Int, String>): Byte {
-        return row.getUntypedByName(tag.second, tag.first) as Byte
+    override fun endStructure(descriptor: SerialDescriptor) {
+        // Empty
     }
 
-    override fun decodeTaggedChar(tag: Pair<Int, String>): Char {
-        return row.getUntypedByName(tag.second, tag.first) as Char
-    }
+    override fun <T> decodeSerializableElement(
+        descriptor: SerialDescriptor,
+        index: Int,
+        deserializer: DeserializationStrategy<T>
+    ): T {
+        @Suppress("UNCHECKED_CAST")
+        if (row.getUntyped(index) == null) return null as T
 
-    override fun decodeTaggedDouble(tag: Pair<Int, String>): Double {
-        return row.getUntypedByName(tag.second, tag.first) as Double
-    }
-
-    override fun decodeTaggedEnum(tag: Pair<Int, String>, enumDescription: SerialDescriptor): Int {
-        return enumDescription.elementNames().indexOf(row.getUntypedByName(tag.second, tag.first) as String)
-    }
-
-    override fun decodeTaggedFloat(tag: Pair<Int, String>): Float {
-        return row.getUntypedByName(tag.second, tag.first) as Float
-    }
-
-    override fun decodeTaggedInt(tag: Pair<Int, String>): Int {
-        return row.getUntypedByName(tag.second, tag.first) as Int
-    }
-
-    override fun decodeTaggedLong(tag: Pair<Int, String>): Long {
-        return row.getUntypedByName(tag.second, tag.first) as Long
-    }
-
-    override fun decodeTaggedNull(tag: Pair<Int, String>): Nothing? {
-        if (row.getUntypedByName(tag.second, tag.first) == null) {
-            return null
+        if (deserializer.descriptor.kind == StructureKind.LIST) {
+            if (row.columnDefinitions[index].type == PGType.Bytea) {
+                // TODO How to check if this is actually correct output type?
+                @Suppress("UNCHECKED_CAST")
+                return row[index, PGType.Bytea] as T
+            }
+            TODO()
+        } else {
+            throw IllegalStateException("Cannot deserialize row (unsupported): " +
+                    "${deserializer.descriptor} at index $index")
         }
-
-        throw IllegalStateException("Expected null but value was not null")
     }
 
-    override fun decodeTaggedShort(tag: Pair<Int, String>): Short {
-        return row.getUntypedByName(tag.second, tag.first) as Short
+    override fun <T : Any> decodeNullableSerializableElement(
+        descriptor: SerialDescriptor,
+        index: Int,
+        deserializer: DeserializationStrategy<T?>
+    ): T? {
+        return decodeSerializableElement(descriptor, index, deserializer)
     }
 
-    override fun decodeTaggedString(tag: Pair<Int, String>): String {
-        return row.getUntypedByName(tag.second, tag.first) as String
-    }
+    override fun <T : Any> updateNullableSerializableElement(
+        descriptor: SerialDescriptor,
+        index: Int,
+        deserializer: DeserializationStrategy<T?>,
+        old: T?
+    ): T? = throw NotImplementedError()
 
-    override fun decodeTaggedUnit(tag: Pair<Int, String>) {
-    }
-}
-
-@OptIn(InternalSerializationApi::class)
-internal class PostgresListDecoder(private val row: DBRow, private val listTag: Pair<Int, String>) : TaggedDecoder<Int>() {
-    private val bytea = row[listTag.first, PGType.Bytea]!!
-    override fun SerialDescriptor.getTag(index: Int): Int = index
-    override fun decodeTaggedByte(tag: Int): Byte = bytea[tag]
-    override fun decodeCollectionSize(descriptor: SerialDescriptor): Int = bytea.size
-    override fun decodeElementIndex(descriptor: SerialDescriptor): Int = currentTag
+    override fun <T> updateSerializableElement(
+        descriptor: SerialDescriptor,
+        index: Int,
+        deserializer: DeserializationStrategy<T>,
+        old: T
+    ): T = throw NotImplementedError()
 }
 
 internal fun <T> Flow<DBRow>.mapRows(serializer: KSerializer<T>): Flow<T> {
     return map { row ->
-        serializer.deserialize(PostgresDecoder(row))
+        serializer.deserialize(PostgresRootDecoder(EmptyModule, row))
     }
 }
 
@@ -101,112 +117,96 @@ internal class PostgresByteaEncoder(private val target: ByteArray) : TaggedEncod
     }
 }
 
-@OptIn(InternalSerializationApi::class)
 internal class PostgresRowEncoder(
     private val target: Array<Any?>,
     private val headers: List<PGType<*>>,
-    private val nameToIndex: Map<String, List<Int>>
-) : TaggedEncoder<Pair<Int, String>>() {
+    private val nameToIndex: Map<String, List<Int>>,
+    override val context: SerialModule
+) : CompositeEncoder {
     init {
         require(headers.size == target.size)
     }
 
-    override fun SerialDescriptor.getTag(index: Int): Pair<Int, String> = index to getElementName(index)
+    override fun encodeBooleanElement(descriptor: SerialDescriptor, index: Int, value: Boolean) {
+        require(headers[index] == PGType.Bool)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
+    }
 
-    override fun beginCollection(
+    override fun encodeByteElement(descriptor: SerialDescriptor, index: Int, value: Byte) {
+        TODO()
+    }
+
+    override fun encodeCharElement(descriptor: SerialDescriptor, index: Int, value: Char) {
+        require(headers[index] == PGType.Char)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
+    }
+
+    override fun encodeDoubleElement(descriptor: SerialDescriptor, index: Int, value: Double) {
+        require(headers[index] == PGType.Float8)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
+    }
+
+    override fun encodeFloatElement(descriptor: SerialDescriptor, index: Int, value: Float) {
+        require(headers[index] == PGType.Float4)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
+    }
+
+    override fun encodeIntElement(descriptor: SerialDescriptor, index: Int, value: Int) {
+        require(headers[index] == PGType.Int4)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
+    }
+
+    override fun encodeLongElement(descriptor: SerialDescriptor, index: Int, value: Long) {
+        require(headers[index] == PGType.Int8)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
+    }
+
+    override fun <T : Any> encodeNullableSerializableElement(
         descriptor: SerialDescriptor,
-        collectionSize: Int,
-        vararg typeParams: KSerializer<*>
-    ): CompositeEncoder {
-        val tag = currentTagOrNull ?: return this
-        val expectedType = headers[tag.first]
-        if (expectedType == PGType.Bytea) {
-            TODO("Handle bytea")
-        }
-            /*
-            if (descriptor is PrimitiveArrayDescriptor && descriptor.elementDesc == PrimitiveDescriptor(
-                    "yourSerializerUniqueName",
-                    PrimitiveKind.BYTE
-                )
-            ) {
-                val expectedType = headers[tag.first]
-                if (expectedType != PGType.Bytea) {
-                    throw IllegalStateException("Expected $tag to have type bytea but was $expectedType")
+        index: Int,
+        serializer: SerializationStrategy<T>,
+        value: T?
+    ) {
+        if (serializer.descriptor.kind == UnionKind.ENUM_KIND && value is Enum<*>) {
+            val name = descriptor.getElementName(index)
+            val ordinal = value.ordinal
+            when (headers[index]) {
+                PGType.Int2 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toShort() }
+                PGType.Int4 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
+                PGType.Int8 -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal.toLong() }
+                PGType.Numeric -> nameToIndex.getValue(name).forEach { i -> target[i] = ordinal }
+                PGType.Text -> nameToIndex.getValue(name).forEach { i -> target[i] = value.name }
+                else -> {
+                    throw IllegalArgumentException("Bad type: ${headers[index]}")
                 }
-
-                val value = ByteArray(collectionSize)
-                nameToIndex.getValue(tag.second).forEach { i -> target[i] = value}
-                return PostgresByteaEncoder(value)
             }
-             */
-
-        return super.beginCollection(descriptor, collectionSize, *typeParams)
-    }
-
-    override fun beginStructure(descriptor: SerialDescriptor, vararg typeSerializers: KSerializer<*>): CompositeEncoder {
-        val tag = currentTagOrNull ?: return this
-
-        TODO()
-    }
-
-    override fun encodeTaggedBoolean(tag: Pair<Int, String>, value: Boolean) {
-        require(headers[tag.first] == PGType.Bool)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
-    }
-
-    override fun encodeTaggedByte(tag: Pair<Int, String>, value: Byte) {
-        TODO()
-    }
-
-    override fun encodeTaggedChar(tag: Pair<Int, String>, value: Char) {
-        require(headers[tag.first] == PGType.Char)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
-    }
-
-    override fun encodeTaggedDouble(tag: Pair<Int, String>, value: Double) {
-        require(headers[tag.first] == PGType.Float8)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
-    }
-
-    override fun encodeTaggedEnum(tag: Pair<Int, String>, enumDescription: SerialDescriptor, ordinal: Int) {
-        when (headers[tag.first]) {
-            PGType.Int2 -> nameToIndex.getValue(tag.second).forEach { i -> target[i] = ordinal.toShort() }
-            PGType.Int4 -> nameToIndex.getValue(tag.second).forEach { i -> target[i] = ordinal }
-            PGType.Int8 -> nameToIndex.getValue(tag.second).forEach { i -> target[i] = ordinal.toLong() }
-            PGType.Numeric -> nameToIndex.getValue(tag.second).forEach { i -> target[i] = ordinal }
-            PGType.Text -> nameToIndex.getValue(tag.second).forEach { i -> target[i] = enumDescription.getElementName(ordinal) }
-            else -> {
-                throw IllegalArgumentException("Bad type: ${headers[tag.first]}")
-            }
+        } else {
+            throw IllegalStateException("Unsupported type (idx = $index): $value")
         }
     }
 
-    override fun encodeTaggedFloat(tag: Pair<Int, String>, value: Float) {
-        require(headers[tag.first] == PGType.Float4)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
+    override fun <T> encodeSerializableElement(
+        descriptor: SerialDescriptor,
+        index: Int,
+        serializer: SerializationStrategy<T>,
+        value: T
+    ) {
+        encodeNullableSerializableElement(descriptor, index, serializer, value)
     }
 
-    override fun encodeTaggedInt(tag: Pair<Int, String>, value: Int) {
-        require(headers[tag.first] == PGType.Int4)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
+    override fun encodeShortElement(descriptor: SerialDescriptor, index: Int, value: Short) {
+        require(headers[index] == PGType.Int2)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
     }
 
-    override fun encodeTaggedLong(tag: Pair<Int, String>, value: Long) {
-        require(headers[tag.first] == PGType.Int8)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
+    override fun encodeStringElement(descriptor: SerialDescriptor, index: Int, value: String) {
+        require(headers[index] == PGType.Text)
+        nameToIndex.getValue(descriptor.getElementName(index)).forEach { i -> target[i] = value }
     }
 
-    override fun encodeTaggedNull(tag: Pair<Int, String>) {
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = null }
+    override fun encodeUnitElement(descriptor: SerialDescriptor, index: Int) {
     }
 
-    override fun encodeTaggedShort(tag: Pair<Int, String>, value: Short) {
-        require(headers[tag.first] == PGType.Int2)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
-    }
-
-    override fun encodeTaggedString(tag: Pair<Int, String>, value: String) {
-        require(headers[tag.first] == PGType.Text)
-        nameToIndex.getValue(tag.second).forEach { i -> target[i] = value }
+    override fun endStructure(descriptor: SerialDescriptor) {
     }
 }
