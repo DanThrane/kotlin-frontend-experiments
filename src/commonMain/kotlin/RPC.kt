@@ -37,6 +37,7 @@ enum class ResponseCode(val statusCode: Byte) {
     UNAUTHORIZED(2),
     FORBIDDEN(3),
     NOT_FOUND(4),
+    TRY_AGAIN(5),
     INTERNAL_ERROR(127);
 
     companion object {
