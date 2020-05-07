@@ -64,24 +64,30 @@ fun OutputBuffer.writeFully(bytes: ByteArray) {
 expect fun OutputBuffer.writeDouble(value: Double)
 
 fun OutputBuffer.writeInt(v: Int) {
-    writeByte(v shr (24) and 0xFF)
-    writeByte(v shr (16) and 0xFF)
-    writeByte(v shr (8) and 0xFF)
-    writeByte(v shr (0) and 0xFF)
+    val cPtr = ptr
+    array[cPtr] = (v shr (24) and 0xFF).toByte()
+    array[cPtr + 1] = (v shr (16) and 0xFF).toByte()
+    array[cPtr + 2] = (v shr (8) and 0xFF).toByte()
+    array[cPtr + 3] = (v shr (0) and 0xFF).toByte()
+    ptr += 4
 }
 
 fun OutputBuffer.writeShort(v: Short) {
-    writeByte(v.toInt() shr (8) and 0xFF)
-    writeByte(v.toInt() shr (0) and 0xFF)
+    val cPtr = ptr
+    array[cPtr] = (v.toInt() shr (8) and 0xFF).toByte()
+    array[cPtr + 1] = (v.toInt() shr (0) and 0xFF).toByte()
+    ptr += 2
 }
 
 fun OutputBuffer.writeLong(v: Long) {
-    writeByte((v shr 56).toInt())
-    writeByte((v shr 48).toInt())
-    writeByte((v shr 40).toInt())
-    writeByte((v shr 32).toInt())
-    writeByte((v shr 24).toInt())
-    writeByte((v shr 16).toInt())
-    writeByte((v shr 8).toInt())
-    writeByte((v shr 0).toInt())
+    val cPtr = ptr
+    array[cPtr] = (v shr (56) and 0xFF).toByte()
+    array[cPtr + 1] = (v shr (48) and 0xFF).toByte()
+    array[cPtr + 2] = (v shr (40) and 0xFF).toByte()
+    array[cPtr + 3] = (v shr (32) and 0xFF).toByte()
+    array[cPtr + 4] = (v shr (24) and 0xFF).toByte()
+    array[cPtr + 5] = (v shr (16) and 0xFF).toByte()
+    array[cPtr + 6] = (v shr (8) and 0xFF).toByte()
+    array[cPtr + 7] = (v shr (0) and 0xFF).toByte()
+    ptr += 8
 }

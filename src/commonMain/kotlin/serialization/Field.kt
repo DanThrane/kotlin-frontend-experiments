@@ -37,7 +37,7 @@ class BooleanField(val value: Boolean) : Field(FieldType.BOOLEAN)
 object ObjectEndIndicator : Field(FieldType.OBJ_END)
 object NullField : Field(FieldType.NULL)
 
-class ObjectField(val fields: List<Field>) : Field(FieldType.OBJ_START) {
+class ObjectField(val fields: MutableList<Field>) : Field(FieldType.OBJ_START) {
     fun getByte(idx: Int): Byte {
         if (idx !in fields.indices) throw BadMessageException()
         val field = fields[idx]

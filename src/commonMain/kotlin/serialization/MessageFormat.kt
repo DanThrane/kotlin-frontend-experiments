@@ -6,19 +6,64 @@ import kotlinx.serialization.modules.EmptyModule
 import kotlinx.serialization.modules.SerialModule
 import kotlin.math.max
 
+expect class ByteArrayPool(generator: () -> ByteArray, numberOfElements: Int) {
+    fun borrowInstance(): Pair<Int, ByteArray>
+    fun returnInstance(id: Int)
+}
+
+data class BorrowedSerializationOfMessage(
+    private val owner: MessageFormat,
+    val id: Int,
+    val borrowedBytes: ByteArray,
+    val size: Int
+) {
+    fun release() {
+        owner.returnSerialized(this)
+    }
+}
+
 class MessageFormat(
     private val maxMessageSize: Int = 1024 * 64,
     override val context: SerialModule = EmptyModule
 ) : BinaryFormat {
+    private val pool = ByteArrayPool({ ByteArray(maxMessageSize) }, 256)
+
     override fun <T> dump(serializer: SerializationStrategy<T>, value: T): ByteArray {
-        val out = OutputBuffer(ByteArray(maxMessageSize))
+        val (id, buffer) = pool.borrowInstance()
+        try {
+            val out = OutputBuffer(buffer)
 
-        val writer = internalDump(serializer.descriptor)
-        serializer.serialize(writer, value)
+            val writer = internalDump(serializer.descriptor)
+            serializer.serialize(writer, value)
 
-        val field = ObjectField(writer.fieldBuilder)
-        field.serialize(out)
-        return out.array.sliceArray(0 until out.ptr)
+            val field = ObjectField(writer.fieldBuilder.toMutableList())
+            field.serialize(out)
+            // This is, without a doubt, causing a lot of garbage to be generated
+            return out.array.sliceArray(0 until out.ptr)
+        } finally {
+            pool.returnInstance(id)
+        }
+    }
+
+    fun <T> borrowSerialized(serializer: SerializationStrategy<T>, value: T): BorrowedSerializationOfMessage {
+        val (id, buffer) = pool.borrowInstance()
+        try {
+            val out = OutputBuffer(buffer)
+
+            val writer = internalDump(serializer.descriptor)
+            serializer.serialize(writer, value)
+
+            val field = ObjectField(writer.fieldBuilder.toMutableList())
+            field.serialize(out)
+            return BorrowedSerializationOfMessage(this, id, buffer, out.ptr)
+        } catch (ex: Throwable) {
+            pool.returnInstance(id)
+            throw ex
+        }
+    }
+
+    fun returnSerialized(message: BorrowedSerializationOfMessage) {
+        pool.returnInstance(message.id)
     }
 
     private fun internalDump(desc: SerialDescriptor): RootEncoder {
@@ -40,7 +85,6 @@ class MessageFormat(
                 }
 
                 require(maxId >= 0)
-                log.debug("new writer has ${maxId + 1} fields")
                 return RootEncoder(SparseFieldArray(maxId + 1, allowResize = false))
             }
 
@@ -125,7 +169,7 @@ class MessageFormat(
         }
 
         override fun encodeUnitElement(descriptor: SerialDescriptor, index: Int) {
-            fieldBuilder[index] = ObjectField(emptyList())
+            fieldBuilder[index] = ObjectField(ArrayList())
         }
 
         private fun encodePrimitiveValue(index: Int, value: Any?) {
@@ -140,7 +184,7 @@ class MessageFormat(
                 is Long -> LongField(value)
                 is Short -> IntField(value.toInt())
                 is String -> BinaryField(value.encodeToByteArray())
-                Unit -> ObjectField(emptyList())
+                Unit -> ObjectField(ArrayList())
                 else -> throw IllegalStateException("non primitive value passed to encodePrimitiveValue($value)")
             }
 
@@ -166,7 +210,7 @@ class MessageFormat(
                     } else {
                         val writer = internalDump(serializer.descriptor)
                         serializer.serialize(writer, value)
-                        fieldBuilder[index] = ObjectField(writer.fieldBuilder)
+                        fieldBuilder[index] = ObjectField(writer.fieldBuilder.toMutableList())
                     }
                 }
             }
@@ -191,7 +235,7 @@ class MessageFormat(
                     } else {
                         val writer = internalDump(serializer.descriptor)
                         serializer.serialize(writer, value)
-                        fieldBuilder[index] = ObjectField(writer.fieldBuilder)
+                        fieldBuilder[index] = ObjectField(writer.fieldBuilder.toMutableList())
                     }
                 }
             }
@@ -367,5 +411,18 @@ class MessageFormat(
 
             override fun subList(fromIndex: Int, toIndex: Int): List<Field> = throw NotImplementedError()
         }
+    }
+}
+
+inline fun <T> MessageFormat.useSerialized(
+    serializationStrategy: SerializationStrategy<T>,
+    value: T,
+    block: (ByteArray) -> Unit
+) {
+    val serialized = borrowSerialized(serializationStrategy, value)
+    try {
+        block(serialized.borrowedBytes)
+    } finally {
+        returnSerialized(serialized)
     }
 }

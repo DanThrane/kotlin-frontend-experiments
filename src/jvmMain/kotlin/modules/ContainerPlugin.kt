@@ -1,5 +1,7 @@
 package dk.thrane.playground.modules
 
+import dk.thrane.playground.AttributeKey
+
 interface ContainerPlugin
 
 interface ContainerPluginFactory<Plugin : ContainerPlugin> {

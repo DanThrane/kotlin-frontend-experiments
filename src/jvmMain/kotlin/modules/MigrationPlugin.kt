@@ -1,5 +1,6 @@
 package dk.thrane.playground.modules
 
+import dk.thrane.playground.AttributeKey
 import dk.thrane.playground.MigrationHandler
 
 class MigrationPlugin(private val container: ModuleContainer) : ContainerPlugin {

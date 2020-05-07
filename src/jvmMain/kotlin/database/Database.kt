@@ -7,23 +7,28 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+import org.cliffc.high_scale_lib.NonBlockingHashMap
+import java.io.File
 import java.util.*
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
+import kotlin.math.absoluteValue
 
 class Transaction internal constructor(
-    internal val user: DatabaseUser,
+    val user: DatabaseUser,
     internal val timestamp: Long
 ) {
     internal val ownEventLog = ArrayList<Event>()
 }
 
-class Database {
+class Database(logFile: File) {
     private val timestamps = AtomicLong(0)
 
-    private val eventLog = EventLog()
+    private val eventLog = EventLog(logFile)
     private val store = HashMap<DocumentCompanion<*>, HashMapWithList<DocumentId, DocumentWithHeader<*>>>()
+    private val nameToCompanion = HashMap<String, DocumentCompanion<*>>()
     private var didInit = false
     private val commitMutex = Mutex()
 
@@ -40,6 +45,58 @@ class Database {
     fun registerType(companion: DocumentCompanion<*>) {
         require(!didInit) { "registerType() must be called before initializeStore()!" }
         store[companion] = HashMapWithList()
+        nameToCompanion[companion.name] = companion
+        eventLog.register(companion)
+    }
+
+    suspend fun initializeStore() {
+        require(!didInit) { "Already initialized!" }
+        didInit = true
+
+        val transactions = HashMap<Long, ArrayList<Event>>()
+        eventLog.readLog().forEach { event ->
+            when (event) {
+                is Event.OpenTransaction -> {
+                    transactions[event.transactionId] = ArrayList()
+                }
+
+                is Event.Commit -> {
+                    // TODO we need to commit these changes
+                    val events = transactions[event.transactionId] ?: run {
+                        log.warn("Unknown transaction! ${event.transactionId}")
+                        return@forEach
+                    }
+
+                    for (event in events) {
+                        applyEvent(event, null)
+
+                    }
+                    transactions.remove(event.transactionId)
+                }
+
+                is Event.Rollback -> {
+                    val events = transactions[event.transactionId]
+                    if (events == null) {
+                        log.warn("Found no events for transaction: ${event.transactionId}")
+                    }
+                }
+
+                else -> {
+                    val events = transactions[event.transactionId]
+                    if (events == null) {
+                        log.warn("Unknown transaction! ${event.transactionId}")
+                    } else {
+                        events.add(event)
+                    }
+                }
+            }
+        }
+
+        eventLog.openForWriting()
+    }
+
+    fun stop() {
+        eventLog.close()
     }
 
     private suspend fun <Doc : Document> addToStore(
@@ -68,13 +125,20 @@ class Database {
                 for (i in documentVersions.indices.reversed()) {
                     val doc = documentVersions[i]
                     log.debug("Inspecting: $doc")
+
                     if (transaction.timestamp == doc.header.createdBy) {
                         if (doc.header.deleting) {
                             // Deleted in our transaction
                             break
                         }
 
-                        emit(doc)
+                        val canRead = with(OperationContext(Unit, doc, transaction)) {
+                            with(doc.companion) {
+                                runCatching { verifyRead() }.isSuccess
+                            }
+                        }
+
+                        if (canRead) emit(doc)
                         break
                     }
 
@@ -85,45 +149,15 @@ class Database {
                             // Document with this ID has been deleted in our transaction
                             break
                         } else if (existsInTransaction) {
-                            emit(doc)
+                            val canRead = with(OperationContext(Unit, doc, transaction)) {
+                                with(doc.companion) {
+                                    runCatching { verifyRead() }.isSuccess
+                                }
+                            }
+
+                            if (canRead) emit(doc)
                             break
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    suspend fun initializeStore() {
-        require(!didInit) { "Already initialized!" }
-        didInit = true
-
-        val transactions = HashMap<Long, ArrayList<Event>>()
-        eventLog.readLog().forEach { event ->
-            when (event) {
-                is Event.OpenTransaction -> {
-                    transactions[event.transactionId] = ArrayList()
-                }
-
-                is Event.Commit -> {
-                    // TODO we need to commit these changes
-                    transactions.remove(event.transactionId)
-                }
-
-                is Event.Rollback -> {
-                    val events = transactions[event.transactionId]
-                    if (events == null) {
-                        log.warn("Found no events for transaction: ${event.transactionId}")
-                    }
-                }
-
-                else -> {
-                    val events = transactions[event.transactionId]
-                    if (events == null) {
-                        log.warn("Unknown transaction! ${event.transactionId}")
-                    } else {
-                        events.add(event)
-                        applyEvent(event, null)
                     }
                 }
             }
@@ -136,20 +170,28 @@ class Database {
         document: Doc
     ): DocumentId {
         val docId = UUID.randomUUID().toString()
+        val docWithHeader = DocumentWithHeader(
+            DocumentHeader(
+                docId,
+                transaction.timestamp,
+                -1,
+                deleting = false,
+                dirty = true
+            ),
+            document,
+            companion
+        )
+
+        with(OperationContext(Unit, docWithHeader, transaction)) {
+            with(companion) {
+                verifyCreate()
+            }
+        }
+
         applyEvent(
             Event.Create(
                 transaction.timestamp,
-                DocumentWithHeader(
-                    DocumentHeader(
-                        docId,
-                        transaction.timestamp,
-                        -1,
-                        deleting = false,
-                        dirty = true
-                    ),
-                    document,
-                    companion
-                )
+                docWithHeader
             ),
             transaction
         )
@@ -163,6 +205,12 @@ class Database {
     ) {
         val id = oldDocument.header.id
         val companion = oldDocument.companion
+
+        with(OperationContext(Unit, oldDocument, transaction)) {
+            with(companion) {
+                verifyUpdate(newDocument)
+            }
+        }
 
         applyEvent(
             Event.Update(
@@ -185,6 +233,12 @@ class Database {
         val id = documentWithHeader.header.id
         val document = documentWithHeader.document
         val companion = documentWithHeader.companion
+
+        with(OperationContext(Unit, documentWithHeader, transaction)) {
+            with(companion) {
+                verifyDelete()
+            }
+        }
 
         applyEvent(
             Event.Delete(
@@ -272,15 +326,35 @@ class Database {
     }
 
     private suspend fun applyEvent(event: Event, transaction: Transaction?) {
-        transaction?.ownEventLog?.add(event)
-
         when (event) {
-            is Event.Create<*> -> addToStore(event.document as DocumentWithHeader<*>)
+            is Event.Create<*> -> {
+                val doc = if (transaction == null) {
+                    event.document.copy(header = event.document.header.copy(dirty = false))
+                } else {
+                    event.document
+                }
 
-            is Event.Update<*> -> addToStore(event.newDocument)
+                addToStore(doc)
+            }
+
+            is Event.Update<*> -> {
+                val doc = if (transaction == null) {
+                    event.newDocument.copy(header = event.newDocument.header.copy(dirty = false))
+                } else {
+                    event.newDocument
+                }
+                addToStore(doc)
+            }
 
             is Event.Delete<*> -> {
-                addToStore(event.document.copy(header = event.document.header.copy(deleting = true)))
+                val baseDoc = event.document.copy(header = event.document.header.copy(deleting = true))
+                val doc = if (transaction == null) {
+                    baseDoc.copy(header = baseDoc.header.copy(dirty = false))
+                } else {
+                    baseDoc
+                }
+
+                addToStore(doc)
             }
 
             is Event.Rollback, is Event.Commit, is Event.OpenTransaction -> {
@@ -290,7 +364,11 @@ class Database {
                 // OpenTransaction doesn't really matter when replaying.
             }
         }
-        eventLog.addEntry(event)
+
+        if (transaction != null) {
+            transaction.ownEventLog.add(event)
+            eventLog.addEntry(event, event is Event.Commit)
+        }
     }
 
     companion object {
@@ -299,11 +377,13 @@ class Database {
 }
 
 class HashMapWithList<K, V>(
-    private val delegate: HashMap<K, List<V>> = HashMap()
+    private val delegate: NonBlockingHashMap<K, List<V>> = NonBlockingHashMap()
 ) : MutableMap<K, List<V>> by delegate {
-    private val mutex = Mutex()
+    // TODO This is probably really stupid
+    private val mutexes = Array(128) { Mutex() }
 
     suspend fun addEntry(key: K, value: V) {
+        val mutex = mutexes[key.hashCode().absoluteValue % mutexes.size]
         mutex.withLock {
             val existing = delegate[key] ?: emptyList()
             delegate[key] = existing + value
@@ -311,6 +391,7 @@ class HashMapWithList<K, V>(
     }
 
     suspend fun removeEntry(key: K, value: V) {
+        val mutex = mutexes[key.hashCode().absoluteValue % mutexes.size]
         mutex.withLock {
             val existing = delegate[key]
             if (existing != null) {

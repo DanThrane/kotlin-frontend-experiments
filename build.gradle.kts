@@ -21,6 +21,7 @@ repositories {
 kotlin {
     jvm {
         val main by compilations.getting {
+
             kotlinOptions {
                 jvmTarget = "1.8"
             }
@@ -60,6 +61,7 @@ kotlin {
                 implementation(kotlin("stdlib-jdk8"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.3.5")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-runtime:0.20.0")
+                implementation("com.boundary:high-scale-lib:1.0.6")
                 implementation(kotlin("reflect"))
             }
         }

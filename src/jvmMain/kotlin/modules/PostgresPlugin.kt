@@ -1,5 +1,6 @@
 package dk.thrane.playground.modules
 
+import dk.thrane.playground.AttributeKey
 import dk.thrane.playground.psql.PostgresConnectionParameters
 import dk.thrane.playground.psql.PostgresConnectionPool
 

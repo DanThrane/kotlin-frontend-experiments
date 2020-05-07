@@ -1,9 +1,12 @@
 package dk.thrane.playground.database
 
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlin.reflect.KClass
 
 typealias DocumentId = String
 
+@Serializable
 data class DocumentHeader(
     val id: DocumentId,
     val createdBy: Long,
@@ -16,6 +19,7 @@ interface Document
 
 abstract class DocumentCompanion<Doc : Document>(val type: KClass<Doc>) {
     val name = type.simpleName ?: throw IllegalArgumentException("Documents must have a name!")
+    abstract val serializer: KSerializer<Doc>
 
     private val internalOperations = ArrayList<Operation<*, Doc>>()
     val operations: List<Operation<*, Doc>> get() = internalOperations
@@ -23,6 +27,7 @@ abstract class DocumentCompanion<Doc : Document>(val type: KClass<Doc>) {
     abstract fun OperationContext<Unit, Doc>.verifyRead()
     abstract fun OperationContext<Unit, Doc>.verifyCreate()
     abstract fun OperationContext<Unit, Doc>.verifyUpdate(newDocument: Doc)
+    abstract fun OperationContext<Unit, Doc>.verifyDelete()
 
     fun <Request> operation(
         verify: OperationContext<Request, Doc>.() -> Unit,
@@ -53,9 +58,8 @@ abstract class DocumentCompanion<Doc : Document>(val type: KClass<Doc>) {
 }
 
 data class OperationContext<Request, Doc : Document>(
-    val accessedBy: DatabaseUser,
     val request: Request,
-    val document: Doc,
+    val docWithHeader: DocumentWithHeader<Doc>,
     val transaction: Transaction
 )
 

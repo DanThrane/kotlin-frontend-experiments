@@ -1,5 +1,6 @@
 package dk.thrane.playground.modules
 
+import dk.thrane.playground.AttributeStore
 import dk.thrane.playground.BaseServer
 import dk.thrane.playground.Log
 import dk.thrane.playground.startServer

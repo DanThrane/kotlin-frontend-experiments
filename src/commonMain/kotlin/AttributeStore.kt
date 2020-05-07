@@ -1,4 +1,4 @@
-package dk.thrane.playground.modules
+package dk.thrane.playground
 
 class AttributeStore {
     private val store = HashMap<String, Any?>()
