@@ -263,7 +263,7 @@ private fun SerializableEvent.toEvent(registry: Map<String, DocumentCompanion<*>
                         companion.serializer,
                         doc2 ?: throw IllegalStateException("Missing doc2 in delete")
                     ),
-                    companion as DocumentCompanion<Document>
+                    companion
                 )
             )
         }
@@ -376,7 +376,7 @@ internal class EventLog(private val logFile: File) {
             FileInputStream(logFile).buffered().use { ins ->
                 val sizeBuffer = InputBuffer(ByteArray(4))
                 while (true) {
-                    var bytesRead = 0
+                    var bytesRead: Int
                     try {
                         sizeBuffer.ptr = 0
                         bytesRead = ins.readNBytes(sizeBuffer.array, 0, 4)

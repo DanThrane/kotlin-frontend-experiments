@@ -15,3 +15,16 @@ Support for Request-Stream
 ------------------------------------------------------------------------------------------------------------------------
 
 Not yet implemented.
+
+
+------------------------------------------------------------------------------------------------------------------------
+Database
+------------------------------------------------------------------------------------------------------------------------
+
+- Give program access to database [X]
+- Improve type system
+  - Accessing DocWithHeader.doc is a good use-case since we cannot actually reach it
+- Clean up abstraction
+- Serialize and deserialize program
+- Send program across network and run it
+- Streaming of results

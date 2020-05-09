@@ -3,11 +3,8 @@ package dk.thrane.playground.database
 import dk.thrane.playground.Log
 import dk.thrane.playground.RPCException
 import dk.thrane.playground.ResponseCode
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.Serializable
 import org.cliffc.high_scale_lib.NonBlockingHashMap
 import java.io.File
 import java.util.*
@@ -107,10 +104,10 @@ class Database(logFile: File) {
         // Notify indexes here
     }
 
-    suspend fun <Doc : Document> getSnapshot(
+    fun <Doc : Document> getSnapshot(
         transaction: Transaction,
         type: DocumentCompanion<Doc>
-    ): Flow<DocumentWithHeader<Doc>> {
+    ): Iterator<DocumentWithHeader<Doc>> {
         val allEntries = store[type]?.values ?: ArrayList() // TODO we actually need a lock to read the values
         @Suppress("UNCHECKED_CAST")
         return flowOfValidDocuments(transaction, allEntries as Collection<List<DocumentWithHeader<Doc>>>)
@@ -119,8 +116,8 @@ class Database(logFile: File) {
     private fun <Doc : Document> flowOfValidDocuments(
         transaction: Transaction,
         allEntries: Collection<List<DocumentWithHeader<Doc>>>
-    ): Flow<DocumentWithHeader<Doc>> {
-        return flow {
+    ): Iterator<DocumentWithHeader<Doc>> {
+        return iterator {
             for (documentVersions in allEntries) {
                 for (i in documentVersions.indices.reversed()) {
                     val doc = documentVersions[i]
@@ -138,7 +135,7 @@ class Database(logFile: File) {
                             }
                         }
 
-                        if (canRead) emit(doc)
+                        if (canRead) yield(doc)
                         break
                     }
 
@@ -155,7 +152,7 @@ class Database(logFile: File) {
                                 }
                             }
 
-                            if (canRead) emit(doc)
+                            if (canRead) yield(doc)
                             break
                         }
                     }

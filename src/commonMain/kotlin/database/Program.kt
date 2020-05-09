@@ -1,14 +1,36 @@
 package dk.thrane.playground.database
 
+import dk.thrane.playground.AttributeKey
 import dk.thrane.playground.AttributeStore
 import kotlin.properties.ReadOnlyProperty
-import kotlin.reflect.KClass
+import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 import kotlin.reflect.KProperty1
 
 // AST
 sealed class Expression<E> {
     val attributes = AttributeStore()
+}
+
+fun <T> delegate(): ReadWriteProperty<Expression<*>, T> {
+    return object : ReadWriteProperty<Expression<*>, T> {
+        lateinit var key: AttributeKey<T>
+        override fun getValue(thisRef: Expression<*>, property: KProperty<*>): T {
+            if (!this::key.isInitialized) {
+                key = AttributeKey(property.name)
+            }
+
+            return thisRef.attributes[key]
+        }
+
+        override fun setValue(thisRef: Expression<*>, property: KProperty<*>, value: T) {
+            if (!this::key.isInitialized) {
+                key = AttributeKey(property.name)
+            }
+
+            thisRef.attributes[key] = value
+        }
+    }
 }
 
 class Call<E>(
@@ -68,8 +90,6 @@ class Fetch<E>(
     override val body: Expression<*>
 ) : Program()
 
-class Yield<E>(val value: Expression<E>) : Expression<Unit>()
-
 class Block(val expressions: List<Expression<*>>) : Expression<Unit>()
 
 class Debug(val expression: Expression<*>) : Expression<Unit>()
@@ -103,8 +123,6 @@ class And(val left: Expression<Boolean>, val right: Expression<Boolean>) : Expre
 class Or(val left: Expression<Boolean>, val right: Expression<Boolean>) : Expression<Boolean>()
 
 // DSL
-class RemoteTransaction
-
 open class ProgramBuilder {
     val builderForVariables = ArrayList<VariableReference<*>>()
     val builderForBlock = ArrayList<Expression<*>>()
@@ -137,15 +155,15 @@ open class ProgramBuilder {
         builderForBlock.add(FieldAssignment(this, IntLiteral(expr)))
     }
 
-    infix fun <E> FieldAccess<*, String>.assign(expr: String) {
+    infix fun FieldAccess<*, String>.assign(expr: String) {
         builderForBlock.add(FieldAssignment(this, StringLiteral(expr)))
     }
 
-    infix fun <E> FieldAccess<*, Double>.assign(expr: Double) {
+    infix fun FieldAccess<*, Double>.assign(expr: Double) {
         builderForBlock.add(FieldAssignment(this, DoubleLiteral(expr)))
     }
 
-    infix fun <E> FieldAccess<*, Boolean>.assign(expr: Boolean) {
+    infix fun FieldAccess<*, Boolean>.assign(expr: Boolean) {
         builderForBlock.add(FieldAssignment(this, BooleanLiteral(expr)))
     }
 }
@@ -204,10 +222,10 @@ infix fun Expression<Boolean>.or(right: Expression<Boolean>): Expression<Boolean
 
 class FetchBuilder<E> : ProgramBuilder()
 
-fun <E : Any> ProgramBuilder.variable(type: KClass<E>): ReadOnlyProperty<Any?, VariableReference<E>> {
+inline fun <reified E : Any> ProgramBuilder.variable(): ReadOnlyProperty<Any?, VariableReference<E>> {
     return object : ReadOnlyProperty<Any?, VariableReference<E>> {
         var didAdd = false
-        var typeName = type.simpleName ?: throw IllegalArgumentException("Unknown type")
+        var typeName = E::class.simpleName ?: throw IllegalArgumentException("Unknown type")
 
         override fun getValue(thisRef: Any?, property: KProperty<*>): VariableReference<E> {
             val ref = VariableReference<E>(property.name, typeName)
@@ -252,7 +270,7 @@ fun String.literal() = StringLiteral(this)
 fun Boolean.literal() = BooleanLiteral(this)
 fun Double.literal() = DoubleLiteral(this)
 
-fun <E> RemoteTransaction.fetch(block: FetchBuilder<E>.() -> Unit): Fetch<E> {
+fun <E> fetch(block: FetchBuilder<E>.() -> Unit): Fetch<E> {
     val fetchBuilder = FetchBuilder<E>().also(block)
     return Fetch(fetchBuilder.builderForVariables, Block(fetchBuilder.builderForBlock))
 }
@@ -261,8 +279,20 @@ fun ProgramBuilder.debug(expr: Expression<*>) {
     builderForBlock.add(Debug(expr))
 }
 
-fun <E> FetchBuilder<E>.yield(expr: Expression<E>) {
-    builderForBlock.add(Yield(expr))
+fun <E> FetchBuilder<E>.yield(expr: Expression<E>): Expression<Unit> {
+    val element = Call<Unit>("yield", listOf(expr))
+    builderForBlock.add(element)
+    return element
+}
+
+fun ProgramBuilder.create(type: String, expr: Expression<*>): Expression<Unit> {
+    val element = Call<Unit>("create", listOf(StringLiteral(type), expr))
+    builderForBlock.add(element)
+    return element
+}
+
+fun <Return> ProgramBuilder.call(name: String, vararg args: Expression<*>): Expression<Return> {
+    return Call(name, args.toList())
 }
 
 operator fun <Doc, Field> Expression<Doc>.get(field: KProperty1<Doc, Field>): FieldAccess<Doc, Field> {

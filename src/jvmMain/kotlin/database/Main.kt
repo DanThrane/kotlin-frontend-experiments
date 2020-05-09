@@ -35,14 +35,13 @@ data class Todo(val owner: String, val id: String, val message: String, val done
 }
 
 suspend fun main() {
-    val wait = true
+    val wait = false
     val logFile = File("/home/dthrane/db.log")
     val db = Database(logFile).apply {
         registerType(Todo)
         initializeStore()
     }
 
-    exitProcess(0)
     if (wait) {
         println("Waiting for signal!")
         Scanner(System.`in`).nextLine()
@@ -50,25 +49,10 @@ suspend fun main() {
 
     println("Ready!")
     val user = DatabaseUser("user")
-    val time = measureTime {
-        (0 until 1000).map { tId ->
-            GlobalScope.launch {
-                val myTime = measureTime {
-                    db.useTransaction(user) { t ->
-                        val createTime = measureTime {
-                            repeat(1_000) {
-                                db.create(t, Todo, Todo("user", "first-$tId-$it", "Testing", false))
-                            }
-                        }
-                        println("$tId took $createTime in creation")
-                    }
-                }
-                println("$tId took $myTime")
-            }
-        }.forEach { it.join() }
-    }
 
-    println("Done in $time")
+    db.useTransaction(user) { t ->
+        db.create(t, Todo, Todo("user", "todo", "Testing", false))
+    }
     db.stop()
 }
 

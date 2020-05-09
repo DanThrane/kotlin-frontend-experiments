@@ -28,16 +28,20 @@ class MessageFormat(
 ) : BinaryFormat {
     private val pool = ByteArrayPool({ ByteArray(maxMessageSize) }, 256)
 
+    fun <T> dumpToField(serializer: SerializationStrategy<T>, value: T): ObjectField {
+        val writer = internalDump(serializer.descriptor)
+        serializer.serialize(writer, value)
+        return ObjectField(writer.fieldBuilder.toTypedArray().toMutableList())
+    }
+
     override fun <T> dump(serializer: SerializationStrategy<T>, value: T): ByteArray {
+        val field = dumpToField(serializer, value)
+
         val (id, buffer) = pool.borrowInstance()
         try {
             val out = OutputBuffer(buffer)
-
-            val writer = internalDump(serializer.descriptor)
-            serializer.serialize(writer, value)
-
-            val field = ObjectField(writer.fieldBuilder.toMutableList())
             field.serialize(out)
+
             // This is, without a doubt, causing a lot of garbage to be generated
             return out.array.sliceArray(0 until out.ptr)
         } finally {
@@ -53,7 +57,8 @@ class MessageFormat(
             val writer = internalDump(serializer.descriptor)
             serializer.serialize(writer, value)
 
-            val field = ObjectField(writer.fieldBuilder.toMutableList())
+            // TODO This crashes when going directly to toMutableList()
+            val field = ObjectField(writer.fieldBuilder.toTypedArray().toMutableList())
             field.serialize(out)
             return BorrowedSerializationOfMessage(this, id, buffer, out.ptr)
         } catch (ex: Throwable) {
@@ -99,6 +104,10 @@ class MessageFormat(
         return RootDecoder(objectField).decode(deserializer)
     }
 
+    fun <T> load(deserializer: DeserializationStrategy<T>, obj: ObjectField): T {
+        return RootDecoder(obj).decode(deserializer)
+    }
+
     private inner class RootEncoder(val fieldBuilder: SparseFieldArray) : Encoder {
         override val context = this@MessageFormat.context
 
@@ -123,6 +132,7 @@ class MessageFormat(
         override fun encodeNull() {
 
         }
+
         override fun encodeShort(value: Short) = unexpectedUsage()
         override fun encodeString(value: String) = unexpectedUsage()
         override fun encodeUnit() = unexpectedUsage()
@@ -210,7 +220,7 @@ class MessageFormat(
                     } else {
                         val writer = internalDump(serializer.descriptor)
                         serializer.serialize(writer, value)
-                        fieldBuilder[index] = ObjectField(writer.fieldBuilder.toMutableList())
+                        fieldBuilder[index] = ObjectField(writer.fieldBuilder.toTypedArray().toMutableList())
                     }
                 }
             }
@@ -235,7 +245,7 @@ class MessageFormat(
                     } else {
                         val writer = internalDump(serializer.descriptor)
                         serializer.serialize(writer, value)
-                        fieldBuilder[index] = ObjectField(writer.fieldBuilder.toMutableList())
+                        fieldBuilder[index] = ObjectField(writer.fieldBuilder.toTypedArray().toMutableList())
                     }
                 }
             }
@@ -270,6 +280,7 @@ class MessageFormat(
             require(field is NullField)
             return null
         }
+
         override fun decodeShort(): Short = (field as IntField).value.toShort()
         override fun decodeString(): String = (field as BinaryField).value.decodeToString()
         override fun decodeUnit() {
@@ -299,14 +310,17 @@ class MessageFormat(
         override fun decodeByteElement(descriptor: SerialDescriptor, index: Int): Byte = field.getByte(index)
         override fun decodeCharElement(descriptor: SerialDescriptor, index: Int): Char =
             field.getBinary(index).decodeToString().single()
+
         override fun decodeDoubleElement(descriptor: SerialDescriptor, index: Int): Double = field.getDouble(index)
         override fun decodeFloatElement(descriptor: SerialDescriptor, index: Int): Float =
             field.getDouble(index).toFloat()
+
         override fun decodeIntElement(descriptor: SerialDescriptor, index: Int): Int = field.getInt(index)
         override fun decodeLongElement(descriptor: SerialDescriptor, index: Int): Long = field.getLong(index)
         override fun decodeShortElement(descriptor: SerialDescriptor, index: Int): Short = field.getInt(index).toShort()
         override fun decodeStringElement(descriptor: SerialDescriptor, index: Int): String =
             field.getBinary(index).decodeToString()
+
         override fun decodeUnitElement(descriptor: SerialDescriptor, index: Int) {
             require(field.fields[index].type == FieldType.OBJ_START)
         }
