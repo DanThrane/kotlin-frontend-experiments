@@ -1,3 +1,5 @@
+package dk.thrane.playground
+
 import kotlinx.browser.document
 import org.w3c.dom.*
 

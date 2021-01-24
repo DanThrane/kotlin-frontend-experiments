@@ -1,3 +1,5 @@
+package dk.thrane.playground
+
 // https://github.com/angryziber/kotlin-webcomponents
 
 import kotlinx.browser.window
@@ -9,8 +11,13 @@ typealias AttributeListener = (name: String, oldVald: String?, newVal: String?) 
 abstract class CustomTag(val tag: String) {
     lateinit var element: HTMLElement
     protected val observedAttributes: Array<String> = emptyArray()
+    private val mountListeners = ArrayList<() -> Unit>()
     private val unmountListeners = ArrayList<() -> Unit>()
     private val attributeListeners = ArrayList<AttributeListener>()
+
+    fun onMount(listener: () -> Unit) {
+        mountListeners.add(listener)
+    }
 
     fun onUnmount(listener: () -> Unit) {
         unmountListeners.add(listener)
@@ -27,6 +34,7 @@ abstract class CustomTag(val tag: String) {
 
     @JsName("mounted")
     open fun mounted() {
+        mountListeners.forEach { it() }
     }
 
     @JsName("unmounted")
@@ -43,14 +51,11 @@ abstract class CustomTag(val tag: String) {
         observedAttributes.asDynamic().push(prop)
     }
 
-
     companion object {
         private val wrapImpl = jsFunction("impl", jsCode = ES6_CLASS_ADAPTER) as (impl: CustomTag) -> () -> dynamic
 
-        fun define(vararg tags: CustomTag) {
-            tags.forEach { tag ->
-                window.customElements.define(tag.tag, wrapImpl(tag))
-            }
+        fun define(tag: CustomTag, tagName: String = tag.tag, extends: String? = undefined) {
+            window.customElements.define(tagName, wrapImpl(tag), ElementDefinitionOptions(extends))
         }
     }
 }

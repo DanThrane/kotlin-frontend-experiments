@@ -1,3 +1,5 @@
+package dk.thrane.playground
+
 typealias StateListener<T> = (T) -> Unit
 
 class State<T>(initialValue: T, private val compareWithOldValue: Boolean) {

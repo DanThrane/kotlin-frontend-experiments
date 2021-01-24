@@ -1,3 +1,5 @@
+package dk.thrane.playground
+
 import org.w3c.dom.*
 
 inline fun NodeCursor<*>.a(
@@ -111,6 +113,7 @@ inline fun NodeCursor<*>.label(
     baseElement("label", attrs, children)
 }
 
+@Suppress("NOTHING_TO_INLINE")
 inline fun NodeCursor<*>.br(
     attrs: CommonAttributes<HTMLFormElement> = CommonAttributes()
 ) {
@@ -162,7 +165,7 @@ inline fun NodeCursor<*>.textarea(
     )
 }
 
-inline fun NodeCursor<*>.button(
+inline fun NodeCursor<*>.nativeButton(
     attrs: CommonAttributes<HTMLButtonElement> = CommonAttributes(),
     type: String? = "button",
     children: (NodeCursor<HTMLButtonElement>.() -> Unit) = {}
@@ -221,4 +224,13 @@ inline fun NodeCursor<*>.title(
     children: (NodeCursor<HTMLTitleElement>.() -> Unit) = {}
 ) {
     baseElement("title", attrs, children)
+}
+
+inline fun NodeCursor<*>.img(
+    attrs: CommonAttributes<HTMLImageElement> = CommonAttributes(),
+    src: String,
+    alt: String = "",
+    children: (NodeCursor<HTMLImageElement>.() -> Unit) = {}
+) {
+    baseElement("img", attrs.mergeWith(mapOf("src" to src, "alt" to alt)), children)
 }

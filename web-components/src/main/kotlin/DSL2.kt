@@ -1,3 +1,5 @@
+package dk.thrane.playground
+
 import kotlinx.browser.document
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.Node
@@ -53,7 +55,6 @@ inline fun <T : Node> NodeCursor<*>.baseElement(
 
 fun NodeCursor<*>.add(element: Node) {
     if (cursor == node.childNodes.length) {
-        console.log("Just appending")
         node.appendChild(element)
     } else {
         val child = node.childNodes[cursor]!!
