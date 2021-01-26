@@ -5,7 +5,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration
-import kotlin.time.MonoClock
+import kotlin.time.TimeSource
 
 data class MessageSubscription<Req, Res>(
     val rpc: RPC<Req, Res>,
@@ -64,11 +64,11 @@ abstract class WSConnection : Connection {
 
         rpcClientLog.debug("Serializing header and body")
         val frames = listOf(
-            MessageFormat.dump(
+            MessageFormat.encodeToByteArray(
                 RequestHeader.serializer(),
                 header
             ),
-            MessageFormat.dump(
+            MessageFormat.encodeToByteArray(
                 rpc.requestSerializer,
                 request
             )
@@ -129,7 +129,7 @@ suspend fun <Req, Res> RPC<Req, Res>.call(
     connectionWithAuth: ConnectionWithAuthorization,
     message: Req
 ): Res {
-    val start = MonoClock.markNow()
+    val start = TimeSource.Monotonic.markNow()
     logCallStarted(message)
 
     val requestHeader = RequestHeader(

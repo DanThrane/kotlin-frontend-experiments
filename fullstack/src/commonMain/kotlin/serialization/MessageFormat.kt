@@ -2,8 +2,13 @@ package dk.thrane.playground.serialization
 
 import dk.thrane.playground.Log
 import kotlinx.serialization.*
-import kotlinx.serialization.modules.EmptyModule
-import kotlinx.serialization.modules.SerialModule
+import kotlinx.serialization.descriptors.*
+import kotlinx.serialization.encoding.CompositeDecoder
+import kotlinx.serialization.encoding.CompositeEncoder
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.modules.EmptySerializersModule
+import kotlinx.serialization.modules.SerializersModule
 import kotlin.math.max
 
 expect class ByteArrayPool(generator: () -> ByteArray, numberOfElements: Int) {
@@ -20,11 +25,34 @@ data class BorrowedSerializationOfMessage(
     fun release() {
         owner.returnSerialized(this)
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as BorrowedSerializationOfMessage
+
+        if (owner != other.owner) return false
+        if (id != other.id) return false
+        if (!borrowedBytes.contentEquals(other.borrowedBytes)) return false
+        if (size != other.size) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = owner.hashCode()
+        result = 31 * result + id
+        result = 31 * result + borrowedBytes.contentHashCode()
+        result = 31 * result + size
+        return result
+    }
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 class MessageFormat(
     private val maxMessageSize: Int = 1024 * 64,
-    override val context: SerialModule = EmptyModule
+    override val serializersModule: SerializersModule = EmptySerializersModule,
 ) : BinaryFormat {
     private val pool = ByteArrayPool({ ByteArray(maxMessageSize) }, 256)
 
@@ -34,7 +62,7 @@ class MessageFormat(
         return ObjectField(writer.fieldBuilder.toTypedArray().toMutableList())
     }
 
-    override fun <T> dump(serializer: SerializationStrategy<T>, value: T): ByteArray {
+    override fun <T> encodeToByteArray(serializer: SerializationStrategy<T>, value: T): ByteArray {
         val field = dumpToField(serializer, value)
 
         val (id, buffer) = pool.borrowInstance()
@@ -99,22 +127,20 @@ class MessageFormat(
         }
     }
 
-    override fun <T> load(deserializer: DeserializationStrategy<T>, bytes: ByteArray): T {
+    override fun <T> decodeFromByteArray(deserializer: DeserializationStrategy<T>, bytes: ByteArray): T {
         val objectField = Field.deserialize(InputBuffer(bytes)) as? ObjectField ?: throw BadMessageException()
-        return RootDecoder(objectField).decode(deserializer)
+        return RootDecoder(objectField).decodeSerializableValue(deserializer)
     }
 
-    fun <T> load(deserializer: DeserializationStrategy<T>, obj: ObjectField): T {
-        return RootDecoder(obj).decode(deserializer)
+    fun <T> decodeFromField(deserializer: DeserializationStrategy<T>, obj: ObjectField): T {
+        return RootDecoder(obj).decodeSerializableValue(deserializer)
     }
 
     private inner class RootEncoder(val fieldBuilder: SparseFieldArray) : Encoder {
-        override val context = this@MessageFormat.context
+        override val serializersModule: SerializersModule
+            get() = this@MessageFormat.serializersModule
 
-        override fun beginStructure(
-            descriptor: SerialDescriptor,
-            vararg typeSerializers: KSerializer<*>
-        ): CompositeEncoder {
+        override fun beginStructure(descriptor: SerialDescriptor): CompositeEncoder {
             return ObjectEncoder(fieldBuilder)
         }
 
@@ -135,12 +161,12 @@ class MessageFormat(
 
         override fun encodeShort(value: Short) = unexpectedUsage()
         override fun encodeString(value: String) = unexpectedUsage()
-        override fun encodeUnit() = unexpectedUsage()
+        //override fun encodeUnit() = unexpectedUsage()
     }
 
     private inner class ObjectEncoder(val fieldBuilder: SparseFieldArray) : CompositeEncoder {
-        override val context: SerialModule
-            get() = this@MessageFormat.context
+        override val serializersModule: SerializersModule
+            get() = this@MessageFormat.serializersModule
 
         override fun encodeBooleanElement(descriptor: SerialDescriptor, index: Int, value: Boolean) {
             fieldBuilder[index] = BooleanField(value)
@@ -178,9 +204,11 @@ class MessageFormat(
             fieldBuilder[index] = BinaryField(value.encodeToByteArray())
         }
 
+        /*
         override fun encodeUnitElement(descriptor: SerialDescriptor, index: Int) {
             fieldBuilder[index] = ObjectField(ArrayList())
         }
+         */
 
         private fun encodePrimitiveValue(index: Int, value: Any?) {
             val field = when (value) {
@@ -210,7 +238,7 @@ class MessageFormat(
             when (serializer.descriptor.kind) {
                 is PrimitiveKind -> encodePrimitiveValue(index, value)
 
-                UnionKind.ENUM_KIND -> {
+                SerialKind.ENUM -> {
                     encodePrimitiveValue(index, (value as Enum<*>).ordinal)
                 }
 
@@ -235,7 +263,7 @@ class MessageFormat(
             when (serializer.descriptor.kind) {
                 is PrimitiveKind -> encodePrimitiveValue(index, value)
 
-                UnionKind.ENUM_KIND -> {
+                SerialKind.ENUM -> {
                     encodePrimitiveValue(index, (value as Enum<*>).ordinal)
                 }
 
@@ -256,11 +284,10 @@ class MessageFormat(
     }
 
     private inner class RootDecoder(private val field: Field) : Decoder {
-        override val context: SerialModule
-            get() = this@MessageFormat.context
-        override val updateMode: UpdateMode = UpdateMode.BANNED
+        override val serializersModule: SerializersModule get() = this@MessageFormat.serializersModule
+        //override val updateMode: UpdateMode = UpdateMode.BANNED
 
-        override fun beginStructure(descriptor: SerialDescriptor, vararg typeParams: KSerializer<*>): CompositeDecoder {
+        override fun beginStructure(descriptor: SerialDescriptor): CompositeDecoder {
             return ObjectReader(field as? ObjectField ?: throw IllegalStateException("Expected an object"))
         }
 
@@ -283,15 +310,16 @@ class MessageFormat(
 
         override fun decodeShort(): Short = (field as IntField).value.toShort()
         override fun decodeString(): String = (field as BinaryField).value.decodeToString()
+        /*
         override fun decodeUnit() {
             require(field is ObjectField)
         }
+         */
     }
 
     private inner class ObjectReader(private val field: ObjectField) : CompositeDecoder {
-        override val updateMode: UpdateMode = UpdateMode.BANNED
-        override val context: SerialModule
-            get() = this@MessageFormat.context
+        override val serializersModule: SerializersModule
+            get() = this@MessageFormat.serializersModule
         private var idx = 0
 
         override fun decodeCollectionSize(descriptor: SerialDescriptor): Int = field.fields.size
@@ -302,7 +330,7 @@ class MessageFormat(
             if (idx < descriptor.elementsCount) {
                 return idx++
             } else {
-                return CompositeDecoder.READ_DONE
+                return CompositeDecoder.DECODE_DONE
             }
         }
 
@@ -321,14 +349,17 @@ class MessageFormat(
         override fun decodeStringElement(descriptor: SerialDescriptor, index: Int): String =
             field.getBinary(index).decodeToString()
 
+        /*
         override fun decodeUnitElement(descriptor: SerialDescriptor, index: Int) {
             require(field.fields[index].type == FieldType.OBJ_START)
         }
+         */
 
         override fun <T : Any> decodeNullableSerializableElement(
             descriptor: SerialDescriptor,
             index: Int,
-            deserializer: DeserializationStrategy<T?>
+            deserializer: DeserializationStrategy<T?>,
+            previousValue: T?
         ): T? {
             if (field.fields[index].type == FieldType.NULL) return null
             return deserializer.deserialize(RootDecoder(field.fields[index]))
@@ -337,7 +368,8 @@ class MessageFormat(
         override fun <T> decodeSerializableElement(
             descriptor: SerialDescriptor,
             index: Int,
-            deserializer: DeserializationStrategy<T>
+            deserializer: DeserializationStrategy<T>,
+            previousValue: T?
         ): T {
             // This doesn't seem correct. For some reason it works.
             if (field.fields[index].type == FieldType.NULL) return null as T
@@ -346,32 +378,18 @@ class MessageFormat(
 
         override fun endStructure(descriptor: SerialDescriptor) {
         }
-
-        override fun <T : Any> updateNullableSerializableElement(
-            descriptor: SerialDescriptor,
-            index: Int,
-            deserializer: DeserializationStrategy<T?>,
-            old: T?
-        ): T? = throw IllegalStateException("Not supported")
-
-        override fun <T> updateSerializableElement(
-            descriptor: SerialDescriptor,
-            index: Int,
-            deserializer: DeserializationStrategy<T>,
-            old: T
-        ): T = throw IllegalStateException("Not supported")
     }
 
     companion object : BinaryFormat {
         private val log = Log("MessageFormat")
         public val default = MessageFormat()
+        override val serializersModule: SerializersModule get() = default.serializersModule
 
-        override val context: SerialModule get() = default.context
-        override fun <T> dump(serializer: SerializationStrategy<T>, value: T): ByteArray =
-            default.dump(serializer, value)
+        override fun <T> encodeToByteArray(serializer: SerializationStrategy<T>, value: T): ByteArray =
+            default.encodeToByteArray(serializer, value)
 
-        override fun <T> load(deserializer: DeserializationStrategy<T>, bytes: ByteArray): T =
-            default.load(deserializer, bytes)
+        override fun <T> decodeFromByteArray(deserializer: DeserializationStrategy<T>, bytes: ByteArray): T =
+            default.decodeFromByteArray(deserializer, bytes)
 
         private class SparseFieldArray(initialCapacity: Int, val allowResize: Boolean) : List<Field> {
             private var realArray = Array<Field>(initialCapacity) { NullField }

@@ -1,5 +1,6 @@
 package dk.thrane.playground.components
 
+/*
 import dk.thrane.playground.*
 import org.w3c.dom.Element
 import kotlin.browser.window
@@ -93,3 +94,4 @@ fun Element.toasts() {
         }
     }
 }
+ */

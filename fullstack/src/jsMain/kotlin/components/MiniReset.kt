@@ -4,86 +4,88 @@ import dk.thrane.playground.*
 
 /*! minireset.css v0.0.5 | MIT License | github.com/jgthms/minireset.css */
 
-val reset = css {
-    listOf(
-        "html",
-        "body",
-        "p",
-        "ol",
-        "ul",
-        "li",
-        "dl",
-        "dt",
-        "dd",
-        "blockquote",
-        "figure",
-        "fieldset",
-        "legend",
-        "textarea",
-        "pre",
-        "iframe",
-        "hr",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6"
-    ).forEach { tag ->
-        (byTag(tag)) {
-            margin = 0.px
-            padding = 0.px
+fun NodeCursor<*>.cssReset() {
+    css {
+        listOf(
+            "html",
+            "body",
+            "p",
+            "ol",
+            "ul",
+            "li",
+            "dl",
+            "dt",
+            "dd",
+            "blockquote",
+            "figure",
+            "fieldset",
+            "legend",
+            "textarea",
+            "pre",
+            "iframe",
+            "hr",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6"
+        ).forEach { tag ->
+            (byTag(tag)) {
+                margin = 0.px
+                padding = 0.px
+            }
         }
-    }
 
-    (1..6).forEach { headingLevel ->
-        (byTag("h$headingLevel")) {
-            fontWeight = "normal"
+        (1..6).forEach { headingLevel ->
+            (byTag("h$headingLevel")) {
+                fontWeight = "normal"
+            }
         }
-    }
 
-    (byTag("ul")) {
-        listStyle = "none"
-    }
-
-    listOf(
-        "button",
-        "input",
-        "select",
-        "textarea"
-    ).forEach { tag ->
-        (byTag(tag)) {
-            margin = 0.px
+        (byTag("ul")) {
+            listStyle = "none"
         }
-    }
 
-    (byTag("html")) {
-        boxSizing = "border-box"
-    }
+        listOf(
+            "button",
+            "input",
+            "select",
+            "textarea"
+        ).forEach { tag ->
+            (byTag(tag)) {
+                margin = 0.px
+            }
+        }
 
-    (matchAny() or (matchAny().withPseudoClass("before")) or (matchAny().withPseudoClass("after"))) {
-        boxSizing = "inherit"
-    }
+        (byTag("html")) {
+            boxSizing = "border-box"
+        }
 
-    listOf(
-        "img",
-        "video"
-    ).forEach { tag ->
-        height = "auto"
-        maxWidth = 100.percent
-    }
+        (matchAny() or (matchAny().withPseudoClass("before")) or (matchAny().withPseudoClass("after"))) {
+            boxSizing = "inherit"
+        }
 
-    (byTag("iframe")) {
-        border = "0"
-    }
+        listOf(
+            "img",
+            "video"
+        ).forEach { tag ->
+            height = "auto"
+            maxWidth = 100.percent
+        }
 
-    (byTag("table")) {
-        borderCollapse = "collapse"
-        borderSpacing = "0"
-    }
+        (byTag("iframe")) {
+            border = "0"
+        }
 
-    (byTag("td") or byTag("th")) {
-        padding = "0"
-        textAlign = "left"
+        (byTag("table")) {
+            borderCollapse = "collapse"
+            borderSpacing = "0"
+        }
+
+        (byTag("td") or byTag("th")) {
+            padding = "0"
+            textAlign = "left"
+        }
     }
 }

@@ -290,7 +290,7 @@ internal sealed class BackendMessage(val type: Byte) {
                 50.toByte() -> null
 
                 else -> {
-                    log.warn("Unimplemented message type: $type (${type.toChar()})")
+                    log.debug("Unimplemented message type: $type (${type.toChar()})")
                     null
                 }
             }

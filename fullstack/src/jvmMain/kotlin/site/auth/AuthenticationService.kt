@@ -26,6 +26,7 @@ class AuthenticationService(
     private val jwt: JWT,
     private val jwtAlgorithmAndKey: JWTAlgorithmAndKey
 ) {
+    /*
     private val tokenCache = HashMap<String, CachedToken>()
     private val insertPrincipal = createInsertStatement(PrincipalTable, PrincipalTable.serializer()).asCommand()
     private val insertToken = createInsertStatement(TokenTable, TokenTable.serializer()).asCommand()
@@ -57,12 +58,15 @@ class AuthenticationService(
         FindPrincipalByToken.serializer(),
         PrincipalTable.serializer()
     ).asQuery()
+    */
 
     suspend fun createUser(
         role: PrincipalRole,
         username: String,
         password: String
     ) {
+        TODO()
+        /*
         val hashedPassword = hashPassword(password.toCharArray())
         db.useTransaction { conn ->
             insertPrincipal(conn,
@@ -74,9 +78,12 @@ class AuthenticationService(
                 )
             )
         }
+        */
     }
 
     suspend fun login(username: String, password: String): LoginResponse? {
+        TODO()
+        /*
         db.useTransaction { conn ->
             val principal = findPrincipalByUsername(conn,
                 FindByUsername(username)
@@ -104,14 +111,18 @@ class AuthenticationService(
                 ), token.token
             )
         }
+        */
     }
 
     suspend fun logout(token: String) {
+        TODO()
+        /*
         db.useTransaction { conn ->
             deleteByToken(conn,
                 DeleteByToken(token)
             )
         }
+        */
     }
 
     suspend fun refresh(refreshToken: String): String {
@@ -128,13 +139,15 @@ class AuthenticationService(
             jwt.verify(jwtToken, jwtAlgorithmAndKey)
         }.getOrNull() ?: return null
 
-        val claims = Json.plain.fromJson(JWTClaims.serializer(), decodedToken.body)
+        val claims = Json.Default.decodeFromJsonElement(JWTClaims.serializer(), decodedToken.body)
         if (System.currentTimeMillis() > claims.exp) return null
 
         return Principal(claims.sub, claims.role)
     }
 
     suspend fun validateRefreshToken(token: String?): Principal? {
+        TODO()
+        /*
         if (token == null) return null
 
         val cachedToken = tokenCache[token]
@@ -155,15 +168,19 @@ class AuthenticationService(
             cacheToken(token, mappedPrincipal)
             return mappedPrincipal
         }
+        */
     }
 
     private fun cacheToken(token: String, mappedPrincipal: Principal) {
+        TODO()
+        /*
         synchronized(tokenCache) {
             tokenCache[token] = CachedToken(
                 System.currentTimeMillis() + cacheExpiryTime,
                 mappedPrincipal
             )
         }
+        */
     }
 
     private fun createLoginToken(): String {
@@ -208,10 +225,13 @@ suspend fun AuthenticationService.verifyUser(
     jwtToken: String?,
     validRoles: Set<PrincipalRole> = setOf(PrincipalRole.USER, PrincipalRole.ADMIN)
 ): Principal {
+    /*
     val capturedToken = jwtToken ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
     val principal = validateJWT(capturedToken) ?: throw RPCException(ResponseCode.UNAUTHORIZED, "Unauthorized")
     if (principal.role !in validRoles) {
         throw RPCException(ResponseCode.FORBIDDEN, "Forbidden")
     }
     return principal
+     */
+    TODO()
 }

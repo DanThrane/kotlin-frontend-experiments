@@ -61,7 +61,7 @@ class JVMWSConnection(
                 val capturedResponseHandler = currentResponseHeader
                 if (capturedResponseHandler == null) {
                     // TODO We need error handling for this
-                    currentResponseHeader = MessageFormat.load(ResponseHeader.serializer(), frame)
+                    currentResponseHeader = MessageFormat.decodeFromByteArray(ResponseHeader.serializer(), frame)
                 }
 
                 val newCapturedResponseHandler = currentResponseHeader
@@ -75,7 +75,7 @@ class JVMWSConnection(
 
                     if (handler != null) {
                         val body = if (newCapturedResponseHandler.hasBody) {
-                            MessageFormat.load(handler.rpc.responseSerializer, frame)
+                            MessageFormat.decodeFromByteArray(handler.rpc.responseSerializer, frame)
                         } else {
                             null
                         }

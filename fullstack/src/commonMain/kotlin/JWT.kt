@@ -1,8 +1,7 @@
 package dk.thrane.playground
 
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.*
 
 sealed class JWTAlgorithmAndKey(val algorithm: JWTAlgorithm)
 
@@ -26,8 +25,11 @@ class JWT(private val json: Json, private val base64Encoder: Base64Encoder) {
                 .encodeToByteArray(throwOnInvalidSequence = true)
         )
 
-        val body =
-            base64Encoder.encode(json.stringify(serializer, claims).encodeToByteArray(throwOnInvalidSequence = true))
+        val body = base64Encoder
+            .encode(
+                json.encodeToString(serializer, claims)
+                    .encodeToByteArray(throwOnInvalidSequence = true)
+            )
 
         val signature = when (algAndKey) {
             is HS256WithKey -> {
@@ -55,11 +57,15 @@ class JWT(private val json: Json, private val base64Encoder: Base64Encoder) {
         val (header, body, _) = splitToken
 
         val parsedHeader = runCatching {
-            json.parseJson(base64Encoder.decode(header).decodeToString(throwOnInvalidSequence = true)).jsonObject
+            json.parseToJsonElement(
+                base64Encoder.decode(header).decodeToString(throwOnInvalidSequence = true)
+            ).jsonObject
         }.getOrNull() ?: throw IllegalArgumentException("Bad token. Header segment is invalid.")
 
         val parsedBody = runCatching {
-            json.parseJson(base64Encoder.decode(body).decodeToString(throwOnInvalidSequence = true)).jsonObject
+            json.parseToJsonElement(
+                base64Encoder.decode(body).decodeToString(throwOnInvalidSequence = true)
+            ).jsonObject
         }.getOrNull() ?: throw IllegalArgumentException("Bad token. Body segment is invalid.")
 
         return DecodedJWT(parsedHeader, parsedBody)
@@ -70,8 +76,10 @@ class JWT(private val json: Json, private val base64Encoder: Base64Encoder) {
         require(splitToken.size == 3)
         val (header, body, signature) = splitToken
         val decodedJWT = validate(token)
-        val algorithm =
-            decodedJWT.header.getPrimitiveOrNull("alg")?.contentOrNull ?: throw JWTVerificationException("No algorithm")
+        val algorithm = when (val alg = decodedJWT.header["alg"]) {
+            is JsonPrimitive -> alg.content
+            else -> null
+        } ?: throw JWTVerificationException("No algorithm")
 
         if (algorithm != expectedAlgorithmAndKey.algorithm.encodedName) {
             throw JWTVerificationException("Bad algorithm.")

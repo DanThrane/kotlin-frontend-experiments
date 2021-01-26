@@ -8,8 +8,8 @@ class PostgresPlugin(private val container: ModuleContainer) : ContainerPlugin {
     init {
         container.pgPool = PostgresConnectionPool(
             PostgresConnectionParameters(
-                username = "kotlin",
-                password = "kotlin",
+                username = "postgres",
+                password = "postgres",
                 database = "kotlin",
                 hostname = "localhost"
             )

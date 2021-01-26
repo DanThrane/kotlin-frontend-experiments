@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.StandardSocketOptions
 import java.nio.ByteBuffer
@@ -60,7 +61,11 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
             val address = InetSocketAddress(connectionParameters.hostname, connectionParameters.port)
             val socket = AsynchronousSocketChannel.open()
             socket.setOption(StandardSocketOptions.TCP_NODELAY, true)
-            socket.asyncConnect(address)
+            try {
+                socket.asyncConnect(address)
+            } catch (ex: IOException) {
+                throw IOException("Could not connect to Postgres server at $address", ex)
+            }
 
             val outs = AsyncByteOutStream(ByteBuffer.allocate(1024 * 64), writeData = { socket.asyncWrite(it) })
             val ins = run {
@@ -157,7 +162,7 @@ internal class InternalPostgresConnection(private val connectionParameters: Post
                     }
 
                     else -> {
-                        log.info("Unhandled message: $message")
+                        log.debug("Unhandled message: $message")
                     }
                 }
             }

@@ -8,6 +8,9 @@ import kotlinx.coroutines.runBlocking
 fun main(args: Array<String>) {
     runBlocking {
         val container = ModuleContainer(args.toList() + listOf("--migrate")).apply {
+            LogManager.customLogLevels["PostgresConnection"] = LogLevel.INFO
+            LogManager.customLogLevels["PSQLMessage"] = LogLevel.INFO
+
             install(PostgresPlugin)
             install(MigrationPlugin)
 

@@ -39,9 +39,9 @@ class MessageFormatTest {
         val wrapper = Wrapper(42)
         assertEquals(
             wrapper,
-            MessageFormat.load(
+            MessageFormat.decodeFromByteArray(
                 Wrapper.serializer(),
-                MessageFormat.dump(Wrapper.serializer(), wrapper)
+                MessageFormat.encodeToByteArray(Wrapper.serializer(), wrapper)
             )
         )
     }
@@ -64,9 +64,9 @@ class MessageFormatTest {
 
         assertEquals(
             wrapper,
-            MessageFormat.load(
+            MessageFormat.decodeFromByteArray(
                 Node.serializer(),
-                MessageFormat.dump(Node.serializer(), wrapper)
+                MessageFormat.encodeToByteArray(Node.serializer(), wrapper)
             )
         )
     }
@@ -77,9 +77,9 @@ class MessageFormatTest {
 
         assertEquals(
             wrapper,
-            MessageFormat.load(
+            MessageFormat.decodeFromByteArray(
                 Generic.serializer(Wrapper.serializer()),
-                MessageFormat.dump(Generic.serializer(Wrapper.serializer()), wrapper)
+                MessageFormat.encodeToByteArray(Generic.serializer(Wrapper.serializer()), wrapper)
             )
         )
     }
@@ -90,9 +90,9 @@ class MessageFormatTest {
 
         assertEquals(
             wrapper,
-            MessageFormat.load(
+            MessageFormat.decodeFromByteArray(
                 ListOfGeneric.serializer(Wrapper.serializer()),
-                MessageFormat.dump(ListOfGeneric.serializer(Wrapper.serializer()), wrapper)
+                MessageFormat.encodeToByteArray(ListOfGeneric.serializer(Wrapper.serializer()), wrapper)
             )
         )
     }
@@ -103,9 +103,9 @@ class MessageFormatTest {
 
         assertEquals(
             wrapper,
-            MessageFormat.load(
+            MessageFormat.decodeFromByteArray(
                 NullableGeneric.serializer(Wrapper.serializer()),
-                MessageFormat.dump(NullableGeneric.serializer(Wrapper.serializer()), wrapper)
+                MessageFormat.encodeToByteArray(NullableGeneric.serializer(Wrapper.serializer()), wrapper)
             )
         )
     }
@@ -116,9 +116,9 @@ class MessageFormatTest {
 
         assertEquals(
             wrapper,
-            MessageFormat.load(
+            MessageFormat.decodeFromByteArray(
                 ListOfGeneric.serializer(Wrapper.serializer().nullable),
-                MessageFormat.dump(ListOfGeneric.serializer(Wrapper.serializer().nullable), wrapper)
+                MessageFormat.encodeToByteArray(ListOfGeneric.serializer(Wrapper.serializer().nullable), wrapper)
             )
         )
     }
@@ -143,9 +143,9 @@ class MessageFormatTest {
 
         assertEquals(
             wrapper,
-            MessageFormat.load(
+            MessageFormat.decodeFromByteArray(
                 ListOfGeneric.serializer(Node.serializer()),
-                MessageFormat.dump(ListOfGeneric.serializer(Node.serializer()), wrapper)
+                MessageFormat.encodeToByteArray(ListOfGeneric.serializer(Node.serializer()), wrapper)
             )
         )
     }
@@ -156,9 +156,9 @@ class MessageFormatTest {
             val wrapper = PrimitiveNullable("Hello, World")
             assertEquals(
                 wrapper,
-                MessageFormat.load(
+                MessageFormat.decodeFromByteArray(
                     PrimitiveNullable.serializer(),
-                    MessageFormat.dump(PrimitiveNullable.serializer(), wrapper)
+                    MessageFormat.encodeToByteArray(PrimitiveNullable.serializer(), wrapper)
                 )
             )
         }
@@ -167,9 +167,9 @@ class MessageFormatTest {
             val wrapper = PrimitiveNullable(null)
             assertEquals(
                 wrapper,
-                MessageFormat.load(
+                MessageFormat.decodeFromByteArray(
                     PrimitiveNullable.serializer(),
-                    MessageFormat.dump(PrimitiveNullable.serializer(), wrapper)
+                    MessageFormat.encodeToByteArray(PrimitiveNullable.serializer(), wrapper)
                 )
             )
         }
@@ -181,9 +181,9 @@ class MessageFormatTest {
             val wrapper = EnumTest(e)
             assertEquals(
                 wrapper,
-                MessageFormat.load(
+                MessageFormat.decodeFromByteArray(
                     EnumTest.serializer(),
-                    MessageFormat.dump(EnumTest.serializer(), wrapper)
+                    MessageFormat.encodeToByteArray(EnumTest.serializer(), wrapper)
                 )
             )
         }

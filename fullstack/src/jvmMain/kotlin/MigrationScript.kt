@@ -2,6 +2,9 @@ package dk.thrane.playground
 
 import dk.thrane.playground.psql.SQLTable
 import dk.thrane.playground.psql.*
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.singleOrNull
 import kotlinx.serialization.Serializable
 
@@ -54,8 +57,7 @@ class MigrationHandler(private val db: PostgresConnectionPool) {
             )
         """,
         FindTableQuery.serializer(),
-        FindTableResponse.serializer()
-    ).asQuery()
+    )
 
     private val insertMigration = PreparedStatement(
         """
@@ -64,14 +66,16 @@ class MigrationHandler(private val db: PostgresConnectionPool) {
                 values (?${MigrationTable.index}, ?${MigrationTable.scriptName})
         """,
         MigrationTable.serializer(),
-        EmptyTable.serializer()
-    ).asCommand()
+    )
 
     suspend fun runMigrations() {
         db.useInstance { conn ->
             log.debug("Starting migration")
 
-            val tableExists = findTable(conn, FindTableQuery("public", "migrations")).singleOrNull()?.exists ?: false
+            val tableExists = findTable
+                .query(conn, flowOf(FindTableQuery("public", "migrations")))
+                .singleOrNull()?.getUntyped(0) as Boolean?
+                ?: false
 
             if (!tableExists) {
                 conn.withTransaction {
@@ -92,8 +96,8 @@ class MigrationHandler(private val db: PostgresConnectionPool) {
             val maxIndex = conn.withTransaction {
                 conn
                     .sendQuery("select max(${MigrationTable.index})::int8 from $MigrationTable")
-                    .mapRows(CountTable.serializer())
-                    .singleOrNull()?.count ?: 0L
+                    .map { it.getUntyped(0) as Long? }
+                    .singleOrNull() ?: 0L
             }
 
             log.debug("Migration up to index $maxIndex has been completed.")
@@ -103,7 +107,7 @@ class MigrationHandler(private val db: PostgresConnectionPool) {
                     conn.withTransaction {
                         log.info("Running migration: ${migration.name}")
                         migration.script(conn)
-                        insertMigration(conn, MigrationTable(index + 1, migration.name))
+                        insertMigration.command(conn, MigrationTable(index + 1, migration.name))
                     }
                 }
             }

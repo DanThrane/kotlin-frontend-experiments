@@ -71,7 +71,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
 
     private suspend fun AsyncHttpClientSession.handleRequestFrame(frame: ByteArray) {
         currentRequestHeader = try {
-            MessageFormat.load(RequestHeader.serializer(), frame)
+            MessageFormat.decodeFromByteArray(RequestHeader.serializer(), frame)
         } catch (ex: Throwable) {
             log.warn("Caught an exception parsing message")
             log.warn(ex.stackTraceToString())
@@ -103,7 +103,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
 
                 val rpc = foundHandler.first
                 try {
-                    MessageFormat.load(rpc.requestSerializer, frame)
+                    MessageFormat.decodeFromByteArray(rpc.requestSerializer, frame)
                 } catch (ex: Throwable) {
                     log.debug(ex.stackTraceToString())
                     throw RPCException(ResponseCode.BAD_REQUEST, "Invalid request message")
@@ -211,7 +211,7 @@ abstract class BaseServer : AsyncHttpRequestHandler, AsyncWebSocketRequestHandle
     }
 
     private suspend fun <T> AsyncHttpClientSession.sendMessage(message: T, serializer: KSerializer<T>) {
-        outs.sendWebsocketFrame(WebSocketOpCode.BINARY, MessageFormat.dump(serializer, message))
+        outs.sendWebsocketFrame(WebSocketOpCode.BINARY, MessageFormat.encodeToByteArray(serializer, message))
     }
 
     private suspend fun <Req, Res> AsyncHttpClientSession.handleRPC(

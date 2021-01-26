@@ -1,9 +1,6 @@
 package dk.thrane.playground
 
-import kotlin.time.ClockMark
-import kotlin.time.Duration
-import kotlin.time.ExperimentalTime
-import kotlin.time.MonoClock
+import kotlin.time.*
 
 class Log(val tag: String) {
     fun debug(message: String) {
@@ -35,7 +32,7 @@ enum class LogLevel(val short: String) {
 }
 
 object LogManager {
-    private var lastLog: ClockMark? = null
+    private var lastLog: TimeMark? = null
     var currentLogLevel: LogLevel = LogLevel.DEBUG
     val customLogLevels: MutableMap<String, LogLevel> = HashMap()
 
@@ -44,7 +41,7 @@ object LogManager {
         if (level.ordinal < minLevel.ordinal) return
 
         val duration = lastLog?.elapsedNow() ?: Duration.ZERO
-        lastLog = MonoClock.markNow()
+        lastLog = TimeSource.Monotonic.markNow()
         printlnWithLogColor(level, "[${level.short}/$tag ${duration}] $message")
     }
 }

@@ -5,9 +5,9 @@ import org.w3c.dom.Element
 import org.w3c.dom.HTMLAnchorElement
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.events.Event
-import kotlin.browser.window
 
-inline fun Element.routeLink(
+/*
+inline fun NodeCursor<*>.routeLink(
     attrs: CommonAttributes<HTMLAnchorElement> = CommonAttributes(),
     href: String,
     children: (HTMLAnchorElement.() -> Unit) = {}
@@ -141,3 +141,4 @@ class RouteBuilder {
         return Route(segments)
     }
 }
+ */

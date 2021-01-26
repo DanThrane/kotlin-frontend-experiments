@@ -2,6 +2,7 @@ package dk.thrane.playground.psql
 
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.*
+import kotlinx.serialization.descriptors.*
 import java.util.*
 import kotlin.collections.HashMap
 
@@ -10,10 +11,10 @@ import kotlin.collections.HashMap
  *
  * Named parameters use the following syntax: "?PARAMNAME".
  */
-class PreparedStatement<Input, Output>(
+@OptIn(ExperimentalSerializationApi::class)
+class PreparedStatement<Input>(
     statement: String,
     private val inSerializer: KSerializer<Input>,
-    private val outSerializer: KSerializer<Output>
 ) {
     private val parameterNamesToIndex: Map<String, List<Int>>
     private val indexToParameterName: List<String>
@@ -22,7 +23,7 @@ class PreparedStatement<Input, Output>(
     private var statementIds = WeakHashMap<PostgresConnection, PreparedStatementId>()
 
     init {
-        val types = inSerializer.descriptor.elementDescriptors()
+        val types = inSerializer.descriptor.elementDescriptors
             .mapIndexed { index, elem ->
                 inSerializer.descriptor.getElementName(index) to when (elem.kind) {
                     PrimitiveKind.INT -> PGType.Int4
@@ -36,7 +37,7 @@ class PreparedStatement<Input, Output>(
                     PrimitiveKind.STRING -> PGType.Text
                     StructureKind.CLASS -> TODO()
                     StructureKind.LIST -> {
-                        if (elem.elementDescriptors().single().kind == PrimitiveKind.BYTE) {
+                        if (elem.elementDescriptors.single().kind == PrimitiveKind.BYTE) {
                             PGType.Bytea
                         } else {
                             TODO()
@@ -44,10 +45,9 @@ class PreparedStatement<Input, Output>(
                     }
                     StructureKind.MAP -> TODO()
                     StructureKind.OBJECT -> TODO()
-                    UnionKind.ENUM_KIND -> PGType.Text
+                    SerialKind.ENUM-> PGType.Text
                     PolymorphicKind.SEALED -> TODO()
                     PolymorphicKind.OPEN -> TODO()
-                    UnionKind.CONTEXTUAL -> TODO()
                     else -> throw IllegalStateException("Unhandled type: ${elem.kind}")
                 }
             }
@@ -99,7 +99,7 @@ class PreparedStatement<Input, Output>(
         return conn.createNativePreparedStatement(preparedStatement, header)
     }
 
-    fun query(conn: PostgresConnection, rows: Flow<Input>): Flow<Output> {
+    fun query(conn: PostgresConnection, rows: Flow<Input>): Flow<DBRow> {
         return flow {
             val statementId = statementIds[conn]
                 ?: prepareForConnection(conn).also { statementIds[conn] = it }
@@ -109,39 +109,16 @@ class PreparedStatement<Input, Output>(
                     statementId,
                     rows.map {
                         val target = arrayOfNulls<Any>(header.size)
-                        PostgresRootEncoder(target, header, parameterNamesToIndex).encode(inSerializer, it)
+                        PostgresRootEncoder(target, header, parameterNamesToIndex)
+                            .encodeSerializableValue(inSerializer, it)
                         target.toList()
                     }
-                ).mapRows(outSerializer)
+                )
             )
         }
     }
 }
 
-fun <I, O> PreparedStatement<I, O>.query(conn: PostgresConnection, row: I): Flow<O> {
-    return query(conn, flowOf(row))
-}
-
-suspend fun <I, O> PreparedStatement<I, O>.command(conn: PostgresConnection, row: I) {
+suspend fun <I> PreparedStatement<I>.command(conn: PostgresConnection, row: I) {
     query(conn, flowOf(row)).collect()
-}
-
-suspend fun <I, O> PreparedStatement<I, O>.command(conn: PostgresConnection, rows: Flow<I>) {
-    query(conn, rows).collect()
-}
-
-fun <I, O> PreparedStatement<I, O>.asBatchedCommand(): suspend (conn: PostgresConnection, rows: Flow<I>) -> Unit {
-    return { conn, rows -> command(conn, rows) }
-}
-
-fun <I, O> PreparedStatement<I, O>.asCommand(): suspend (conn: PostgresConnection, row: I) -> Unit {
-    return { conn, row -> command(conn, flowOf(row)) }
-}
-
-fun <I, O> PreparedStatement<I, O>.asBatchedQuery(): suspend (conn: PostgresConnection, rows: Flow<I>) -> Flow<O> {
-    return { conn, rows -> query(conn, rows) }
-}
-
-fun <I, O> PreparedStatement<I, O>.asQuery(): suspend (conn: PostgresConnection, row: I) -> Flow<O> {
-    return { conn, row -> query(conn, flowOf(row)) }
 }
